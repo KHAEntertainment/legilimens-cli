@@ -1,0 +1,161 @@
+openapi: 3.0.3
+info:
+  title: Legilimens Shared Module Harness
+  version: 0.1.0
+  description: >
+    HTTP harness exposing the reusable TypeScript core so non-CLI surfaces can
+    generate Legilimens artifacts with parity to the CLI experience.
+servers:
+  - url: http://localhost:8787
+paths:
+  /health:
+    get:
+      summary: Health check for parity harness
+      operationId: getHealth
+      responses:
+        '200':
+          description: Harness is available
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  version:
+                    type: string
+  /legilimens/generate:
+    post:
+      summary: Generate gateway documentation artifacts
+      operationId: generateGatewayDoc
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - dependency
+                - metadata
+                - templateVersion
+              properties:
+                dependency:
+                  type: object
+                  required:
+                    - type
+                    - identifier
+                  properties:
+                    type:
+                      type: string
+                      description: Dependency classification (framework, api, library, tool)
+                    identifier:
+                      type: string
+                      description: Canonical dependency identifier used by core module
+                metadata:
+                  type: object
+                  required:
+                    - deepWikiRepository
+                    - staticBackupPath
+                  properties:
+                    deepWikiRepository:
+                      type: string
+                      format: uri
+                    staticBackupPath:
+                      type: string
+                      description: Relative path to static-backup file
+                    asciiAssetId:
+                      type: string
+                      description: Optional ASCII art asset to display in CLI
+                options:
+                  type: object
+                  properties:
+                    minimalMode:
+                      type: boolean
+                      default: false
+                    lowContrast:
+                      type: boolean
+                      default: false
+                    locale:
+                      type: string
+                      description: Optional locale override for textual output
+                templateVersion:
+                  type: string
+                  description: Semantic version of canonical template (must match constitution)
+      responses:
+        '200':
+          description: Gateway documentation generated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - gateway
+                  - staticBackup
+                  - metadata
+                properties:
+                  gateway:
+                    type: object
+                    required:
+                      - filename
+                      - content
+                      - deepWikiGuidanceIncluded
+                    properties:
+                      filename:
+                        type: string
+                      content:
+                        type: string
+                      deepWikiGuidanceIncluded:
+                        type: boolean
+                  staticBackup:
+                    type: object
+                    required:
+                      - filename
+                      - content
+                    properties:
+                      filename:
+                        type: string
+                      content:
+                        type: string
+                  metadata:
+                    type: object
+                    properties:
+                      sessionId:
+                        type: string
+                      generationDurationMs:
+                        type: integer
+                      templateValidated:
+                        type: boolean
+                      dependencyType:
+                        type: string
+                      dependencyIdentifier:
+                        type: string
+                      deepWikiRepository:
+                        type: string
+                      minimalMode:
+                        type: boolean
+                      performanceSummary:
+                        type: string
+                      performance:
+                        type: object
+                        required:
+                          - durationMs
+                          - exceededInteractiveTarget
+                          - exceededAbsoluteCeiling
+                          - minimalModeRequested
+                          - minimalModeRecommended
+                        properties:
+                          durationMs:
+                            type: integer
+                          exceededInteractiveTarget:
+                            type: boolean
+                          exceededAbsoluteCeiling:
+                            type: boolean
+                          minimalModeRequested:
+                            type: boolean
+                          minimalModeRecommended:
+                            type: boolean
+        '400':
+          description: Validation failure (e.g., template mismatch, missing sources)
+        '500':
+          description: Unexpected error while generating documentation
