@@ -15,10 +15,10 @@ web adapters can share the same brain.
 - **Workspace**: pnpm-managed TypeScript monorepo targeting Node.js 20 LTS.
 - **Cross-Platform**: Fully compatible with macOS, Linux, Windows, and WSL using cross-platform Node.js APIs.
 - **Packages**:
-  - `@legilimens/core` – reusable gateway generation engine + parity helpers + AI CLI orchestration.
-  - `@legilimens/cli` – Ink-powered UX wrapper with interactive + minimal flows.
+  - `@legilimens/core` – reusable gateway generation engine + local LLM orchestration + Tavily search + parity helpers.
+  - `@legilimens/cli` – Clack-powered modern TUI with wizard-driven config + interactive flows.
   - `@legilimens/harness-service` – Fastify HTTP harness that mirrors CLI responses.
-- **AI Integration**: CLI tool detection → orchestration → generation flow with fallback chains.
+- **AI Integration**: Local llama.cpp (phi-4 GGUF) + Tavily web search for natural language resolution; Firecrawl/Context7/Ref as REST tools.
 - **Secure Storage**: API keys stored in system keychain (macOS Keychain, Windows Credential Manager, Linux Secret Service) with encrypted file fallback.
 - **Telemetry**: Shared performance tracker enforces guardrails and recommends minimal mode when runs stretch.
 - **Doctrine**: DeepWiki remains the canonical knowledge surface; static backups support planning; MCP guidance stays template-driven.
@@ -26,48 +26,51 @@ web adapters can share the same brain.
 ## Quickstart
 ```bash
 pnpm install
-pnpm --filter @legilimens/cli start         # Interactive walkthrough
+pnpm --filter @legilimens/cli start         # Interactive Clack-based CLI
 pnpm --filter @legilimens/harness-service dev  # HTTP harness for parity checks
 pnpm typecheck && pnpm lint                 # Validate TypeScript + linting
 pnpm test:integration                       # Ensure CLI and harness stay in sync
 ```
 
-### Optional: AI CLI Tool Setup
-Legilimens can harness installed AI CLI tools for dynamic content generation. Supported tools:
-- **gemini**: `npm install -g @google/generative-ai-cli`
-- **codex**: Install via [OpenAI CLI](https://platform.openai.com/docs/cli)
-- **claude**: Install via [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
-- **qwen**: Install via [Qwen CLI](https://github.com/QwenLM/Qwen)
+### First Run: Automatic Setup
 
-On first run, the CLI will guide you through a setup wizard to configure API keys and AI tool preferences. Configuration is saved to `~/.legilimens/config.json` (cross-platform home directory detection).
+On first run, Legilimens automatically:
+1. Downloads llama.cpp binary for your platform
+2. Downloads phi-4 GGUF model (~8.5GB, Q4 quantized)
+3. Installs everything to `~/.legilimens/`
 
-Alternatively, configure your preferred tool in `.env`:
+**No manual installation required.**
+
+#### Get Tavily API Key (Required)
+Sign up at [tavily.com](https://tavily.com) and get your API key (free tier available). This enables web search for natural language dependency resolution.
+
+#### Run Setup Wizard
 ```bash
-LEGILIMENS_AI_CLI_TOOL=gemini
-LEGILIMENS_AI_CLI_TIMEOUT_MS=120000
-LEGILIMENS_AI_GENERATION_ENABLED=true
-
-# Optional: Use a custom path if tool is not on PATH
-LEGILIMENS_AI_CLI_COMMAND_OVERRIDE=/custom/path/to/gemini
+pnpm --filter @legilimens/cli start
+# Or force re-setup: pnpm --filter @legilimens/cli start --setup
 ```
 
-**Command Override Behavior**: If `LEGILIMENS_AI_CLI_COMMAND_OVERRIDE` is set along with `LEGILIMENS_AI_CLI_TOOL`, the preferred tool will be attempted using the custom path even if it's not detected on your system PATH. This allows using non-standard installation locations.
+The wizard will:
+1. Auto-install llama.cpp + phi-4 model to `~/.legilimens/` (first run only)
+2. Prompt for Tavily API key (required)
+3. Optionally collect Firecrawl, Context7, RefTools API keys
+4. Save configuration to `~/.legilimens/config.json`
+5. Store API keys securely in system keychain
 
-**CLI Adapter Strategy**: Each supported CLI tool uses a multi-strategy approach for maximum compatibility:
-1. **File-arg strategy** (default): Passes prompt via temp file (e.g., `gemini -p /tmp/file.txt`)
-2. **Stdin strategy** (fallback): Passes prompt via stdin (e.g., `gemini -p -`)
+**Platform Support**: Automatic downloads for macOS (ARM64/x64), Linux (x64), Windows (x64). Model reference: [QuantFactory/phi-4-GGUF](https://huggingface.co/QuantFactory/phi-4-GGUF)
 
-If the first strategy fails with an "unknown option" or "invalid flag" error, the adapter automatically retries with the next strategy. This ensures compatibility across different CLI versions without manual configuration.
-
-**Default Commands by Tool**:
-- **gemini**: `gemini -p <file>` or `gemini -p -`
-- **codex**: `codex api responses.create -m gpt-4o-mini -i <input>` (Responses API, recommended) or `codex -p <file>` (legacy Completions API)
-- **claude**: `claude -p <prompt>` or `claude --print <prompt>` (headless mode)
-- **qwen**: `qwen -p <file>` or `qwen -p -`
-
-These defaults can be overridden programmatically via the `argOverrides` configuration option if needed for specific use cases.
-
-**Note**: API keys must be configured per each tool's documentation (not managed by Legilimens). If no AI tool is available, the system falls back gracefully to static content generation.
+### Optional: Manual Configuration (Dev Mode)
+For development, you can use environment variables (though the wizard is recommended):
+```bash
+LEGILIMENS_LOCAL_LLM_ENABLED=true
+LEGILIMENS_LOCAL_LLM_BIN=/usr/local/bin/main
+LEGILIMENS_LOCAL_LLM_MODEL=~/models/phi-4-q4.gguf
+TAVILY_ENABLED=true
+TAVILY_API_KEY=tvly-...
+FIRECRAWL_API_KEY=fc-...  # optional
+CONTEXT7_API_KEY=...      # optional
+REFTOOLS_API_KEY=...      # optional
+```
 
 ## Platform Support
 

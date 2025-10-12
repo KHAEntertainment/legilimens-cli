@@ -44,6 +44,24 @@ export interface AiCliConfig {
   commandOverride?: string;
 }
 
+export interface LocalLlmConfig {
+  enabled: boolean;
+  binaryPath?: string;
+  modelPath?: string;
+  tokens?: number;
+  threads?: number;
+  temp?: number;
+  timeoutMs?: number;
+  resetBetweenTasks?: boolean;
+}
+
+export interface TavilyConfig {
+  enabled: boolean;
+  apiKey?: string;
+  timeoutMs?: number;
+  maxResults?: number;
+}
+
 export interface RuntimeConfig {
   nodeVersion: string;
   supportsRequiredNode: boolean;
@@ -51,6 +69,8 @@ export interface RuntimeConfig {
   apiKeys: ApiKeys;
   fetcherConfig: FetcherConfig;
   aiCliConfig: AiCliConfig;
+  localLlm?: LocalLlmConfig;
+  tavily?: TavilyConfig;
 }
 
 export const parseNodeVersion = (
@@ -107,6 +127,24 @@ export const getRuntimeConfig = (
     commandOverride: env[ENV_AI_CLI_COMMAND_OVERRIDE]
   };
 
+  const localLlm: LocalLlmConfig = {
+    enabled: (env.LEGILIMENS_LOCAL_LLM_ENABLED ?? 'false').toLowerCase() === 'true',
+    binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
+    modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,
+    tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
+    threads: env.LEGILIMENS_LOCAL_LLM_THREADS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_THREADS, 10) : undefined,
+    temp: env.LEGILIMENS_LOCAL_LLM_TEMP ? Number.parseFloat(env.LEGILIMENS_LOCAL_LLM_TEMP) : undefined,
+    timeoutMs: env.LEGILIMENS_LOCAL_LLM_TIMEOUT ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_TIMEOUT, 10) : undefined,
+    resetBetweenTasks: (env.LEGILIMENS_LOCAL_LLM_RESET ?? 'true').toLowerCase() === 'true',
+  };
+
+  const tavily: TavilyConfig = {
+    enabled: (env.TAVILY_ENABLED ?? 'false').toLowerCase() === 'true',
+    apiKey: env.TAVILY_API_KEY,
+    timeoutMs: env.TAVILY_TIMEOUT_MS ? Number.parseInt(env.TAVILY_TIMEOUT_MS, 10) : undefined,
+    maxResults: env.TAVILY_MAX_RESULTS ? Number.parseInt(env.TAVILY_MAX_RESULTS, 10) : undefined,
+  };
+
   return {
     nodeVersion: version,
     supportsRequiredNode: major >= MINIMUM_NODE_MAJOR,
@@ -118,7 +156,9 @@ export const getRuntimeConfig = (
     },
     apiKeys,
     fetcherConfig,
-    aiCliConfig
+    aiCliConfig,
+    localLlm,
+    tavily
   };
 };
 

@@ -251,29 +251,26 @@ export async function detectSourceTypeWithAI(
   // Try pattern detection first for canonical identifiers
   const staticResult = detectSourceType(trimmed);
   
-  // If we got a confident result from pattern detection, use it
-  if (staticResult.confidence === 'high' || staticResult.confidence === 'medium') {
-    return {
-      ...staticResult,
-      aiAssisted: false,
-    };
+  // If we got a confident result from pattern detection, use it,
+  // UNLESS the input looks like natural language (capitalized or contains spaces),
+  // in which case prefer AI-assisted pipeline to resolve ambiguity.
+  const looksNaturalLanguage = /[A-Z]/.test(trimmed) || /\s/.test(trimmed);
+  if (!looksNaturalLanguage && (staticResult.confidence === 'high' || staticResult.confidence === 'medium')) {
+    return { ...staticResult, aiAssisted: false };
   }
 
-  // Try AI-assisted discovery
+  // Try AI-assisted discovery via local pipeline (llama.cpp + Tavily)
   try {
-    const aiDiscoveredIdentifier = await discoverRepositoryWithAI(trimmed, dependencyType);
-    const isAiDiscovered = aiDiscoveredIdentifier !== trimmed;
-
-    if (isAiDiscovered) {
-      const aiResult = detectSourceType(aiDiscoveredIdentifier);
-      return {
-        ...aiResult,
-        aiAssisted: true,
-        confidence: 'medium', // AI-assisted results are medium confidence
-      };
-    }
+    const { discoverWithPipeline } = await import('../ai/repositoryDiscoveryPipeline.js');
+    const pr = await discoverWithPipeline(trimmed, dependencyType);
+    return {
+      sourceType: pr.sourceType,
+      normalizedIdentifier: pr.normalizedIdentifier,
+      confidence: pr.confidence,
+      aiAssisted: true,
+    };
   } catch (error) {
-    console.debug(`AI-assisted discovery failed for "${trimmed}":`, error);
+    console.debug(`AI-assisted pipeline failed for "${trimmed}":`, error);
   }
 
   // Fall back to regular detection

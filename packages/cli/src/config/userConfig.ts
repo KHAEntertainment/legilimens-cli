@@ -7,6 +7,7 @@ import { saveApiKey, getApiKey, isKeychainAvailable } from './secrets.js';
 
 export interface UserConfig {
   apiKeys: {
+    tavily?: string;
     firecrawl?: string;
     context7?: string;
     refTools?: string;
@@ -156,14 +157,18 @@ export const mergeWithEnvVars = async (
   env: NodeJS.ProcessEnv = process.env
 ): Promise<Partial<RuntimeConfig>> => {
   // Get API keys from environment first, then from secure storage
-  const apiKeys: { firecrawl?: string; context7?: string; refTools?: string } = {};
+  const apiKeys: { tavily?: string; firecrawl?: string; context7?: string; refTools?: string } = {};
   
   // Check environment variables first
+  apiKeys.tavily = env.TAVILY_API_KEY;
   apiKeys.firecrawl = env.FIRECRAWL_API_KEY;
   apiKeys.context7 = env.CONTEXT7_API_KEY;
   apiKeys.refTools = env.REFTOOLS_API_KEY;
   
   // If environment variables are not set, try to get from secure storage
+  if (!apiKeys.tavily) {
+    apiKeys.tavily = await getApiKey('tavily') ?? userConfig.apiKeys.tavily;
+  }
   if (!apiKeys.firecrawl) {
     apiKeys.firecrawl = await getApiKey('firecrawl') ?? userConfig.apiKeys.firecrawl;
   }
@@ -175,7 +180,7 @@ export const mergeWithEnvVars = async (
   }
 
   return {
-    apiKeys,
+    apiKeys: apiKeys as any,
     aiCliConfig: {
       enabled: env.LEGILIMENS_AI_GENERATION_ENABLED
         ? env.LEGILIMENS_AI_GENERATION_ENABLED.toLowerCase() === 'true'
@@ -186,6 +191,22 @@ export const mergeWithEnvVars = async (
         ? parseInt(env.LEGILIMENS_AI_CLI_TIMEOUT_MS, 10)
         : 30000,
       commandOverride: env.LEGILIMENS_AI_CLI_COMMAND_OVERRIDE ?? userConfig.aiCliCommandOverride
+    },
+    localLlm: {
+      enabled: env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true',
+      binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
+      modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,
+      tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
+      threads: env.LEGILIMENS_LOCAL_LLM_THREADS ? parseInt(env.LEGILIMENS_LOCAL_LLM_THREADS, 10) : undefined,
+      temp: env.LEGILIMENS_LOCAL_LLM_TEMP ? parseFloat(env.LEGILIMENS_LOCAL_LLM_TEMP) : undefined,
+      timeoutMs: env.LEGILIMENS_LOCAL_LLM_TIMEOUT ? parseInt(env.LEGILIMENS_LOCAL_LLM_TIMEOUT, 10) : undefined,
+      resetBetweenTasks: env.LEGILIMENS_LOCAL_LLM_RESET !== 'false',
+    },
+    tavily: {
+      enabled: env.TAVILY_ENABLED === 'true',
+      apiKey: apiKeys.tavily,
+      timeoutMs: env.TAVILY_TIMEOUT_MS ? parseInt(env.TAVILY_TIMEOUT_MS, 10) : undefined,
+      maxResults: env.TAVILY_MAX_RESULTS ? parseInt(env.TAVILY_MAX_RESULTS, 10) : undefined,
     }
   };
 };

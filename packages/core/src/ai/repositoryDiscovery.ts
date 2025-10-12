@@ -5,9 +5,8 @@
  * from natural language descriptions when static mappings fail.
  */
 
-import { generateWithCliTool, type CliOrchestratorConfig } from './cliOrchestrator.js';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
-import { type CliToolName } from './cliDetector.js';
+import { discoverWithPipeline } from './repositoryDiscoveryPipeline.js';
 
 export interface RepositoryDiscoveryResult {
   success: boolean;
@@ -32,44 +31,17 @@ export async function discoverRepositoryWithAI(
   dependencyType: string
 ): Promise<RepositoryDiscoveryResult> {
   const runtimeConfig = getRuntimeConfig();
-  
-  if (!runtimeConfig.aiCliConfig.enabled) {
-    return {
-      success: false,
-      error: 'AI generation is disabled'
-    };
+  if (!runtimeConfig.localLlm?.enabled || !runtimeConfig.tavily?.enabled) {
+    return { success: false, confidence: 'low', error: 'Local LLM or Tavily disabled' };
   }
-
-  const prompt = buildRepositoryDiscoveryPrompt(naturalLanguageInput, dependencyType);
-  
-  // Validate and set preferred tool
-  const preferred = (['gemini','codex','claude','qwen'] as const)
-    .includes(runtimeConfig.aiCliConfig.preferredTool as any)
-    ? (runtimeConfig.aiCliConfig.preferredTool as CliToolName)
-    : undefined;
-
-  try {
-    const aiResult = await generateWithCliTool(prompt, {
-      preferredTool: preferred,
-      timeoutMs: runtimeConfig.aiCliConfig.timeoutMs,
-      commandOverride: runtimeConfig.aiCliConfig.commandOverride
-    });
-
-    if (aiResult.success && aiResult.content) {
-      return parseRepositoryDiscoveryResponse(aiResult.content, aiResult.toolUsed, aiResult.attempts);
-    } else {
-      return {
-        success: false,
-        error: aiResult.error || 'AI generation failed',
-        attempts: aiResult.attempts
-      };
-    }
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : String(error)
-    };
-  }
+  const pr = await discoverWithPipeline(naturalLanguageInput, dependencyType);
+  return {
+    success: pr.confidence !== 'low',
+    canonicalIdentifier: pr.normalizedIdentifier,
+    repositoryUrl: pr.repositoryUrl,
+    sourceType: pr.sourceType,
+    confidence: pr.confidence,
+  };
 }
 
 /**

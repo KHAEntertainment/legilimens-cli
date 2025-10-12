@@ -1,10 +1,5 @@
 #!/usr/bin/env node
 
-import { render } from 'ink';
-import React from 'react';
-import App from '../src/app.js';
-import { renderHelp } from '../src/commands/help.js';
-import { loadCliEnvironment } from '../src/config/env.js';
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -17,6 +12,7 @@ const args = process.argv.slice(2);
 
 // Handle --help flag
 if (args.includes('--help') || args.includes('-h')) {
+  const { renderHelp } = await import('../src/commands/help.js');
   console.log(renderHelp());
   process.exit(0);
 }
@@ -40,41 +36,20 @@ if (args.includes('--setup')) {
 
 // Handle --reset flag
 if (args.includes('--reset')) {
-  void (async () => {
-    try {
-      const { getConfigPath } = await import('../src/config/userConfig.js');
-      const { unlinkSync, existsSync } = await import('fs');
-      const configPath = getConfigPath();
-      if (existsSync(configPath)) {
-        unlinkSync(configPath);
-      }
-      process.env.LEGILIMENS_FORCE_SETUP = 'true';
-    } catch (error) {
-      console.error('Error resetting configuration:', error);
-      process.exit(1);
-    }
-  })();
+  const { getConfigPath } = await import('../src/config/userConfig.js');
+  const { unlinkSync, existsSync } = await import('fs');
+  const configPath = getConfigPath();
+  if (existsSync(configPath)) {
+    unlinkSync(configPath);
+  }
+  process.env.LEGILIMENS_FORCE_SETUP = 'true';
 }
 
-// Load environment and start the CLI
+// Run Clack-based CLI
 void (async () => {
   try {
-    const environment = await loadCliEnvironment(args, process.env);
-
-    // Render the Ink app
-    const { waitUntilExit } = render(React.createElement(App, { environment }));
-
-  // Handle graceful shutdown
-  const handleShutdown = (signal: string) => {
-    console.log(`\nReceived ${signal}, shutting down gracefully...`);
-    process.exit(0);
-  };
-
-  process.on('SIGINT', () => handleShutdown('SIGINT'));
-  process.on('SIGTERM', () => handleShutdown('SIGTERM'));
-
-  // Wait for the app to exit
-  void waitUntilExit();
+    const { runClackApp } = await import('../src/clackApp.js');
+    await runClackApp();
   } catch (error) {
     if (error instanceof Error) {
       console.error(`Error: ${error.message}`);

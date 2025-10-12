@@ -67,7 +67,7 @@ TASK: Generate ONLY the following content (do not include markdown headers):
 
 CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or conversational responses.
 
-OUTPUT FORMAT (JSON ONLY):
+OUTPUT FORMAT (JSON):
 {
   "shortDescription": "...",
   "features": ["...", "...", "...", "...", "..."]

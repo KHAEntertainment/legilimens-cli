@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { detectSourceType, deriveDeepWikiUrl, isGitHubIdentifier } from '../src/detection/sourceDetector.js';
+import { detectSourceType, deriveDeepWikiUrl, isGitHubIdentifier, detectSourceTypeWithAI } from '../src/detection/sourceDetector.js';
+import * as discoveryPipeline from '../src/ai/repositoryDiscoveryPipeline.js';
 
 describe('detectSourceType', () => {
   describe('GitHub detection', () => {
@@ -235,23 +236,54 @@ describe('detectSourceType', () => {
   });
 
   describe('Natural language processing', () => {
+    beforeAll(() => {
+      // Mock AI-assisted pipeline so tests are deterministic and offline
+      vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockImplementation(async (input: string) => {
+        const normalized = input.toLowerCase();
+        if (normalized.includes('jumpcloud')) {
+          return { sourceType: 'url', normalizedIdentifier: 'https://docs.jumpcloud.com/api/2.0', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized.includes('stripe')) {
+          return { sourceType: 'url', normalizedIdentifier: 'https://stripe.com/docs/api', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized.includes('github api')) {
+          return { sourceType: 'url', normalizedIdentifier: 'https://docs.github.com/en/rest', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized.includes('next.js') || normalized.includes('nextjs')) {
+          return { sourceType: 'github', normalizedIdentifier: 'nextjs/next', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized === 'react' || normalized.includes('react framework')) {
+          return { sourceType: 'npm', normalizedIdentifier: 'react', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized === 'eslint') {
+          return { sourceType: 'npm', normalizedIdentifier: 'eslint', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized === 'typescript') {
+          return { sourceType: 'github', normalizedIdentifier: 'microsoft/typescript', confidence: 'medium', aiAssisted: true } as any;
+        }
+        if (normalized === 'prettier') {
+          return { sourceType: 'github', normalizedIdentifier: 'prettier/prettier', confidence: 'medium', aiAssisted: true } as any;
+        }
+        return { sourceType: 'unknown', normalizedIdentifier: input, confidence: 'low', aiAssisted: true } as any;
+      });
+    });
     describe('API mappings', () => {
-      it('maps "Jumpcloud API 2.0" to Jumpcloud API URL', () => {
-        const result = detectSourceType('Jumpcloud API 2.0');
+      it('maps "Jumpcloud API 2.0" to Jumpcloud API URL', async () => {
+        const result = await detectSourceTypeWithAI('Jumpcloud API 2.0');
         expect(result.sourceType).toBe('url');
         expect(result.normalizedIdentifier).toBe('https://docs.jumpcloud.com/api/2.0');
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "Stripe API" to Stripe API URL', () => {
-        const result = detectSourceType('Stripe API');
+      it('maps "Stripe API" to Stripe API URL', async () => {
+        const result = await detectSourceTypeWithAI('Stripe API');
         expect(result.sourceType).toBe('url');
         expect(result.normalizedIdentifier).toBe('https://stripe.com/docs/api');
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "GitHub API" to GitHub API URL', () => {
-        const result = detectSourceType('GitHub API');
+      it('maps "GitHub API" to GitHub API URL', async () => {
+        const result = await detectSourceTypeWithAI('GitHub API');
         expect(result.sourceType).toBe('url');
         expect(result.normalizedIdentifier).toBe('https://docs.github.com/en/rest');
         expect(result.confidence).toBe('medium');
@@ -266,8 +298,8 @@ describe('detectSourceType', () => {
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "Next.js" to nextjs/next GitHub repo', () => {
-        const result = detectSourceType('Next.js');
+      it('maps "Next.js" to nextjs/next GitHub repo', async () => {
+        const result = await detectSourceTypeWithAI('Next.js');
         expect(result.sourceType).toBe('github');
         expect(result.normalizedIdentifier).toBe('nextjs/next');
         expect(result.confidence).toBe('medium');
@@ -282,22 +314,22 @@ describe('detectSourceType', () => {
     });
 
     describe('Tool mappings', () => {
-      it('maps "ESLint" to eslint package', () => {
-        const result = detectSourceType('ESLint');
+      it('maps "ESLint" to eslint package', async () => {
+        const result = await detectSourceTypeWithAI('ESLint');
         expect(result.sourceType).toBe('npm');
         expect(result.normalizedIdentifier).toBe('eslint');
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "TypeScript" to microsoft/typescript GitHub repo', () => {
-        const result = detectSourceType('TypeScript');
+      it('maps "TypeScript" to microsoft/typescript GitHub repo', async () => {
+        const result = await detectSourceTypeWithAI('TypeScript');
         expect(result.sourceType).toBe('github');
         expect(result.normalizedIdentifier).toBe('microsoft/typescript');
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "Prettier" to prettier/prettier GitHub repo', () => {
-        const result = detectSourceType('Prettier');
+      it('maps "Prettier" to prettier/prettier GitHub repo', async () => {
+        const result = await detectSourceTypeWithAI('Prettier');
         expect(result.sourceType).toBe('github');
         expect(result.normalizedIdentifier).toBe('prettier/prettier');
         expect(result.confidence).toBe('medium');
@@ -305,15 +337,15 @@ describe('detectSourceType', () => {
     });
 
     describe('Partial matches', () => {
-      it('maps "Jumpcloud" to Jumpcloud API URL', () => {
-        const result = detectSourceType('Jumpcloud');
+      it('maps "Jumpcloud" to Jumpcloud API URL', async () => {
+        const result = await detectSourceTypeWithAI('Jumpcloud');
         expect(result.sourceType).toBe('url');
         expect(result.normalizedIdentifier).toBe('https://docs.jumpcloud.com/api/2.0');
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "React framework" to react package', () => {
-        const result = detectSourceType('React framework');
+      it('maps "React framework" to react package', async () => {
+        const result = await detectSourceTypeWithAI('React framework');
         expect(result.sourceType).toBe('npm');
         expect(result.normalizedIdentifier).toBe('react');
         expect(result.confidence).toBe('medium');

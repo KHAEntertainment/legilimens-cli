@@ -25,6 +25,7 @@ import {
   parseAiResponse,
   generateFallbackContent
 } from './ai/promptBuilder.js';
+import { condenseDocumentation, estimateTokens } from './ai/documentChunker.js';
 import { type CliToolName } from './ai/cliDetector.js';
 import { detectSourceType, deriveDeepWikiUrl, type SourceType } from './detection/sourceDetector.js';
 
@@ -408,11 +409,14 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     const aiStartTime = Date.now();
 
     try {
+      // Condense large documentation with local LLM if enabled
+      const preparedDocs = await condenseDocumentation(staticContent, displayName, dependencyType, runtimeConfig);
+
       // Build AI prompt
       const { prompt } = buildGatewayGenerationPrompt({
         dependencyName: displayName,
         dependencyType,
-        fetchedDocumentation: staticContent,
+        fetchedDocumentation: preparedDocs,
         deepWikiUrl: deepWikiRepository,
         officialSourceUrl: deriveOfficialSource(dependencyIdentifier, deepWikiRepository, sourceType)
       });

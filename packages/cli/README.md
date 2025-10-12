@@ -14,12 +14,14 @@ On first run, Legilimens launches a setup wizard to configure API keys and AI CL
 pnpm --filter @legilimens/cli start
 ```
 
-The wizard will guide you through:
-1. API key configuration (Firecrawl, Context7, RefTools - all optional)
-2. AI CLI tool selection (gemini, codex, claude, qwen, or auto-detect)
-3. Custom command path (optional, for non-standard installations)
+On first run, Legilimens automatically:
+1. **Downloads llama.cpp** binary for your platform (macOS, Linux, Windows)
+2. **Downloads phi-4 GGUF model** (~8.5GB, Q4 quantized) from [QuantFactory/phi-4-GGUF](https://huggingface.co/QuantFactory/phi-4-GGUF)
+3. **Installs to ~/.legilimens/** (bin/ and models/)
+4. **Collects Tavily API key** (required for web search and natural language dependency resolution)
+5. **Optionally collects** Firecrawl, Context7, RefTools API keys
 
-Configuration is saved to `~/.legilimens/config.json` for future runs. API keys are stored securely in your system keychain when available.
+Configuration is saved to `~/.legilimens/config.json` for future runs. API keys are stored securely in your system keychain.
 
 ### Subsequent Runs
 
