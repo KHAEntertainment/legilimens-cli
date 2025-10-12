@@ -3,6 +3,7 @@ import { constants as fsConstants } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type {
+  DependencyType,
   FormatProgress,
   GenerateGatewayDoc,
   GatewayGenerationRequest,
@@ -15,21 +16,32 @@ import {
   createPerformanceTracker,
   summarizePerformance
 } from './telemetry/performance.js';
-
-type DependencyType = 'framework' | 'api' | 'library' | 'tool';
+import { getRuntimeConfig, isAiGenerationEnabled } from './config/runtimeConfig.js';
+import { fetchDocumentation } from './fetchers/orchestrator.js';
+import { isFetchSuccess } from './fetchers/types.js';
+import { generateWithCliTool } from './ai/cliOrchestrator.js';
+import {
+  buildGatewayGenerationPrompt,
+  parseAiResponse,
+  generateFallbackContent
+} from './ai/promptBuilder.js';
+import { type CliToolName } from './ai/cliDetector.js';
+import { detectSourceType, deriveDeepWikiUrl, type SourceType } from './detection/sourceDetector.js';
 
 const VALID_DEPENDENCY_TYPES: ReadonlySet<DependencyType> = new Set([
   'framework',
   'api',
   'library',
-  'tool'
+  'tool',
+  'other'
 ]);
 
 const TYPE_DIRECTORY: Record<DependencyType, string> = {
   framework: 'frameworks',
   api: 'apis',
   library: 'libraries',
-  tool: 'tools'
+  tool: 'tools',
+  other: 'other'
 };
 
 const TEMPLATE_PLACEHOLDERS = [
@@ -101,32 +113,101 @@ const replacePlaceholders = (
 const hasAllPlaceholders = (content: string): boolean =>
   TEMPLATE_PLACEHOLDERS.every((placeholder) => content.includes(placeholder));
 
+const getSourceToolName = (sourceType: SourceType): string => {
+  switch (sourceType) {
+    case 'github': return 'DeepWiki';
+    case 'npm': return 'Context7';
+    case 'url': return 'Firecrawl';
+    case 'unknown': return 'Static backup';
+    default: return 'MCP tools';
+  }
+};
+
+const getSourceTypeName = (sourceType: SourceType): string => {
+  switch (sourceType) {
+    case 'github': return 'GitHub';
+    case 'npm': return 'NPM';
+    case 'url': return 'URLs';
+    case 'unknown': return 'unknown sources';
+    default: return 'dependencies';
+  }
+};
+
 const buildMcpGuidance = (args: {
   dependencyName: string;
-  deepWikiRepository: string;
+  deepWikiRepository: string | undefined;
   staticBackupLink: string;
-}): string =>
-  [
-    'USE DEEPWIKI MCP TO ACCESS DEPENDENCY KNOWLEDGE!',
-    `Primary repository: ${args.deepWikiRepository}`,
-    'Example: ask_question("What is the quickest way to integrate this dependency?")',
-    '',
-    `For planning sessions, review the static backup: ${args.staticBackupLink}`,
-    '',
-    'DeepWiki for coding. Static files for planning.'
-  ].join('\n');
-
-const deriveOfficialSource = (dependencyIdentifier: string, deepWikiRepository: string): string => {
-  if (deepWikiRepository) {
-    return deepWikiRepository;
+  sourceType: SourceType;
+}): string => {
+  switch (args.sourceType) {
+    case 'github':
+      return [
+        'USE DEEPWIKI MCP TO ACCESS DEPENDENCY KNOWLEDGE!',
+        ...(args.deepWikiRepository ? [`Primary repository: ${args.deepWikiRepository}`] : []),
+        'Example: ask_question("What is the quickest way to integrate this dependency?")',
+        '',
+        `For planning sessions, review the static backup: ${args.staticBackupLink}`,
+        '',
+        'DeepWiki for coding. Static files for planning.'
+      ].join('\n');
+    
+    case 'npm':
+      return [
+        'USE CONTEXT7 MCP TO ACCESS PACKAGE DOCUMENTATION!',
+        'Context7 provides cached NPM package documentation optimized for quick queries.',
+        'Use Context7 MCP to query package APIs, usage patterns, and examples.',
+        '',
+        `For deep research, review the static backup: ${args.staticBackupLink}`,
+        '',
+        'Context7 for package docs. Static files for deep research.'
+      ].join('\n');
+    
+    case 'url':
+      return [
+        'USE FIRECRAWL OR WEB-BASED TOOLS TO ACCESS DOCUMENTATION!',
+        'Documentation is available at the provided URL.',
+        'Use Firecrawl MCP or browser-based access for specific sections.',
+        '',
+        `For offline reference, review the static backup: ${args.staticBackupLink}`,
+        '',
+        'Web tools for live docs. Static files for offline reference.'
+      ].join('\n');
+    
+    case 'unknown':
+    default:
+      return [
+        'REFER TO STATIC BACKUP FOR DOCUMENTATION!',
+        'The source type could not be determined for this dependency.',
+        'The static backup serves as the primary reference.',
+        'Consider manually verifying the dependency source.',
+        '',
+        `Primary reference: ${args.staticBackupLink}`,
+        '',
+        'Static backup is your primary reference for this dependency.'
+      ].join('\n');
   }
+};
+
+const deriveOfficialSource = (dependencyIdentifier: string, deepWikiRepository: string | undefined, sourceType: SourceType): string => {
+  // Return canonical source URLs based on source type
+  if (sourceType === 'github') {
+    if (dependencyIdentifier.includes('/')) {
+      return `https://github.com/${dependencyIdentifier.replace(/^https?:\/\//, '')}`;
+    }
+    return deepWikiRepository || `https://github.com/${dependencyIdentifier}`;
+  }
+  
+  if (sourceType === 'npm' || (!dependencyIdentifier.includes('://') && !dependencyIdentifier.includes('/'))) {
+    return `https://www.npmjs.com/package/${dependencyIdentifier}`;
+  }
+  
+  // For URLs and unknown, return the identifier directly
   if (dependencyIdentifier.includes('://')) {
     return dependencyIdentifier;
   }
-  if (dependencyIdentifier.includes('/')) {
-    return `https://github.com/${dependencyIdentifier.replace(/^https?:\/\//, '')}`;
-  }
-  return `https://www.npmjs.com/package/${dependencyIdentifier}`;
+  
+  // Fallback
+  return deepWikiRepository || dependencyIdentifier;
 };
 
 export const validateTemplate: ValidateTemplate = async (
@@ -183,9 +264,14 @@ const buildFeatureList = (args: {
   dependencyType: DependencyType;
   staticBackupLink: string;
   minimalMode: boolean;
+  sourceType?: SourceType;
 }): string[] => {
+  const sourceAppropriateMcp = args.sourceType 
+    ? `Curated MCP prompts accelerate work with ${args.dependencyName} (${getSourceToolName(args.sourceType)} for ${getSourceTypeName(args.sourceType)}).`
+    : `Curated MCP prompts accelerate work with ${args.dependencyName} (DeepWiki for GitHub, Context7 for NPM).`;
+    
   const shared = [
-    `Curated DeepWiki prompts accelerate work with ${args.dependencyName}.`,
+    sourceAppropriateMcp,
     `Static backup lives at ${args.staticBackupLink} for deep dives.`,
     `Enforces immutable Legilimens template for ${args.dependencyType} dependencies.`,
     'Shared Node.js core keeps CLI and service harness outputs aligned.'
@@ -203,15 +289,21 @@ const buildSummary = (args: {
   dependencyType: DependencyType;
   gatewayRelativePath: string;
   staticBackupRelativePath: string;
-  deepWikiRepository: string;
+  deepWikiRepository: string | undefined;
   performanceSummary: string;
-}): string =>
-  [
+  sourceType: SourceType;
+}): string => {
+  const mcpReference = args.sourceType === 'github' && args.deepWikiRepository
+    ? `DeepWiki reference: ${args.deepWikiRepository}.`
+    : `MCP tool guidance: ${getSourceToolName(args.sourceType)}.`;
+    
+  return [
     `Gateway generated for ${args.dependencyName} (${args.dependencyType}).`,
     `Markdown saved to ${args.gatewayRelativePath} with static backup ${args.staticBackupRelativePath}.`,
-    `DeepWiki reference: ${args.deepWikiRepository}.`,
+    mcpReference,
     args.performanceSummary
   ].join(' ');
+};
 
 export const generateGatewayDoc: GenerateGatewayDoc = async (
   request: GatewayGenerationRequest
@@ -234,10 +326,18 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     (typeof variables.dependencyIdentifier === 'string' && variables.dependencyIdentifier.trim()) ||
     'unknown-dependency';
   const dependencyType = sanitizeDependencyType(variables.dependencyType);
-  const deepWikiRepository =
-    (typeof variables.deepWikiRepository === 'string' &&
-      variables.deepWikiRepository.trim()) ||
-    'https://deepwiki.example.com/legilimens';
+  
+  // Automatically derive deepWikiRepository when not provided
+  const providedDeepWiki = typeof variables.deepWikiRepository === 'string' && variables.deepWikiRepository.trim();
+  const isPlaceholder = providedDeepWiki === 'https://deepwiki.example.com/legilimens';
+  const derivedDeepWiki = deriveDeepWikiUrl(dependencyIdentifier);
+  const deepWikiRepository = (providedDeepWiki && !isPlaceholder) 
+    ? providedDeepWiki 
+    : (derivedDeepWiki || undefined);
+
+  // Detect source type early since it's needed for content generation
+  const sourceDetection = detectSourceType(dependencyIdentifier);
+  const sourceType = sourceDetection.sourceType;
 
   const displayName = toDisplayName(dependencyIdentifier);
   const slug = slugify(dependencyIdentifier);
@@ -254,26 +354,170 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
   const gatewayRelativePath = `${TYPE_DIRECTORY[dependencyType]}/${gatewayFilename}`;
   const staticBackupRelativePath = `${TYPE_DIRECTORY[dependencyType]}/static-backup/${staticBackupFilename}`;
 
-  const featureList = buildFeatureList({
-    dependencyName: displayName,
-    dependencyType,
-    staticBackupLink,
-    minimalMode: minimalModeRequested
-  });
+  // Fetch real documentation first
+  const runtimeConfig = getRuntimeConfig();
+  const fetchStartTime = Date.now();
+  const fetchResult = await fetchDocumentation(dependencyIdentifier, runtimeConfig);
+  const fetchDurationMs = Date.now() - fetchStartTime;
+
+  let staticContent: string;
+  let documentationFetched = false;
+  let fetchSource: string | undefined;
+  let fetchAttempts: string[] | undefined;
+
+  if (isFetchSuccess(fetchResult)) {
+    // Use fetched content
+    staticContent = fetchResult.content;
+    documentationFetched = true;
+    fetchSource = fetchResult.metadata.source;
+    fetchAttempts = fetchResult.metadata.attempts;
+  } else {
+    // Fall back to placeholder
+    console.warn(`Documentation fetch failed for ${dependencyIdentifier}: ${fetchResult.error}`);
+    
+    const fallbackLines = [
+      `# Static Backup Placeholder: ${displayName}`,
+      '',
+      'Replace this placeholder with the canonical static-backup markdown when available.',
+      ''
+    ];
+    
+    // Only include DeepWiki reference for GitHub sources
+    if (sourceType === 'github' && deepWikiRepository && deepWikiRepository !== 'https://deepwiki.example.com/legilimens') {
+      fallbackLines.push(`DeepWiki reference: ${deepWikiRepository}`, '');
+    }
+    
+    fallbackLines.push(`Note: Automatic fetch failed - ${fetchResult.error}`);
+    staticContent = fallbackLines.join('\n');
+  }
+
+  // AI generation tracking
+  let aiGenerationEnabled = false;
+  let aiToolUsed: string | undefined;
+  let aiGenerationDurationMs: number | undefined;
+  let aiGenerationAttempts: string[] | undefined;
+  let aiGenerationFailed = false;
+  let aiGenerationError: string | undefined;
+
+  // Try AI generation if enabled
+  let shortDescription: string;
+  let featureList: string[];
+
+  if (isAiGenerationEnabled(runtimeConfig)) {
+    aiGenerationEnabled = true;
+    const aiStartTime = Date.now();
+
+    try {
+      // Build AI prompt
+      const { prompt } = buildGatewayGenerationPrompt({
+        dependencyName: displayName,
+        dependencyType,
+        fetchedDocumentation: staticContent,
+        deepWikiUrl: deepWikiRepository,
+        officialSourceUrl: deriveOfficialSource(dependencyIdentifier, deepWikiRepository, sourceType)
+      });
+
+      // Validate and set preferred tool
+      const preferred = (['gemini','codex','claude','qwen'] as const)
+        .includes(runtimeConfig.aiCliConfig.preferredTool as any)
+        ? (runtimeConfig.aiCliConfig.preferredTool as CliToolName)
+        : undefined;
+
+      // Invoke AI CLI orchestrator
+      const aiResult = await generateWithCliTool(prompt, {
+        preferredTool: preferred,
+        timeoutMs: runtimeConfig.aiCliConfig.timeoutMs,
+        commandOverride: runtimeConfig.aiCliConfig.commandOverride
+      });
+
+      aiGenerationDurationMs = Date.now() - aiStartTime;
+      aiGenerationAttempts = aiResult.attempts;
+
+      if (aiResult.success && aiResult.content) {
+        // Parse AI response
+        const aiContent = parseAiResponse(aiResult.content);
+        shortDescription = aiContent.shortDescription;
+        // Use buildFeatureList to ensure source-appropriate MCP guidance
+        featureList = buildFeatureList({
+          dependencyName: displayName,
+          dependencyType,
+          staticBackupLink,
+          minimalMode: minimalModeRequested,
+          sourceType
+        });
+        
+        aiToolUsed = aiResult.toolUsed;
+      } else {
+        // AI generation failed, use fallback
+        aiGenerationFailed = true;
+        aiGenerationError = aiResult.error;
+        const fallbackContent = generateFallbackContent({
+          dependencyName: displayName,
+          dependencyType,
+          fetchedDocumentation: staticContent
+        });
+        shortDescription = fallbackContent.shortDescription;
+        featureList = buildFeatureList({
+          dependencyName: displayName,
+          dependencyType,
+          staticBackupLink,
+          minimalMode: minimalModeRequested,
+          sourceType
+        });
+      }
+    } catch (error) {
+      // AI generation error, use fallback
+      aiGenerationFailed = true;
+      aiGenerationError = error instanceof Error ? error.message : String(error);
+      console.warn(`AI generation failed: ${aiGenerationError}`);
+
+      const fallbackContent = generateFallbackContent({
+        dependencyName: displayName,
+        dependencyType,
+        fetchedDocumentation: staticContent
+      });
+      shortDescription = fallbackContent.shortDescription;
+      featureList = buildFeatureList({
+        dependencyName: displayName,
+        dependencyType,
+        staticBackupLink,
+        minimalMode: minimalModeRequested,
+        sourceType
+      });
+    }
+  } else {
+    // AI generation disabled, use fallback
+    const fallbackContent = generateFallbackContent({
+      dependencyName: displayName,
+      dependencyType,
+      fetchedDocumentation: staticContent
+    });
+    shortDescription = fallbackContent.shortDescription;
+    featureList = buildFeatureList({
+      dependencyName: displayName,
+      dependencyType,
+      staticBackupLink,
+      minimalMode: minimalModeRequested,
+      sourceType
+    });
+  }
+
+  // buildFeatureList ensures exactly 5 features
 
   const mcpGuidance = buildMcpGuidance({
     dependencyName: displayName,
     deepWikiRepository,
-    staticBackupLink
+    staticBackupLink,
+    sourceType
   });
 
-  const officialSourceUrl = deriveOfficialSource(dependencyIdentifier, deepWikiRepository);
+  const officialSourceUrl = deriveOfficialSource(dependencyIdentifier, deepWikiRepository, sourceType);
   const officialSourceLink = `[Official ${displayName} reference](${officialSourceUrl})`;
 
   const replacements = {
     TITLE: `Legilimens Gateway: ${displayName}`,
     OVERVIEW: `Lightweight Legilimens summary for ${displayName} (${dependencyType}).`,
-    SHORT_DESCRIPTION: `${displayName} gateway captures the essentials without bloating context windows. DeepWiki remains the live source for coding answers while static backups support deliberate planning.`,
+    SHORT_DESCRIPTION: shortDescription,
     FEATURE_1: featureList[0],
     FEATURE_2: featureList[1],
     FEATURE_3: featureList[2],
@@ -307,13 +551,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
 
   await writeFile(`${gatewayPath}`, `${templateFilled}\n`, 'utf8');
 
-  const staticContent = [
-    `# Static Backup Placeholder: ${displayName}`,
-    '',
-    'Replace this placeholder with the canonical static-backup markdown when available.',
-    '',
-    `DeepWiki reference: ${deepWikiRepository}`
-  ].join('\n');
+  // Write static backup (already fetched earlier)
   await writeFile(staticBackupPath, `${staticContent}\n`, 'utf8');
 
   const gatewayDocContent = await readFile(gatewayPath, 'utf8');
@@ -321,14 +559,27 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
   const performanceMetrics = performanceTracker.finish();
   const performanceSummary = summarizePerformance(performanceMetrics);
   const generationDurationMs = performanceMetrics.durationMs;
+
+  // Update summary to reflect fetch result and AI generation
+  const fetchStatusMsg = documentationFetched
+    ? `Documentation fetched from ${fetchSource} in ${fetchDurationMs}ms.`
+    : 'Documentation fetch failed; placeholder created.';
+
+  const aiStatusMsg = aiGenerationEnabled
+    ? aiToolUsed
+      ? `AI generation succeeded with ${aiToolUsed} in ${aiGenerationDurationMs}ms.`
+      : `AI generation failed; used fallback content.`
+    : '';
+
   const summary = buildSummary({
     dependencyName: displayName,
     dependencyType,
     gatewayRelativePath,
     staticBackupRelativePath,
     deepWikiRepository,
-    performanceSummary
-  });
+    performanceSummary,
+    sourceType
+  }) + ` ${fetchStatusMsg}` + (aiStatusMsg ? ` ${aiStatusMsg}` : '');
 
   return {
     documentPath: gatewayPath,
@@ -340,7 +591,13 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
       dependencyIdentifier,
       templateValidated: true,
       generationDurationMs,
-      deepWikiGuidanceIncluded: gatewayDocContent.includes('DeepWiki'),
+      mcpGuidanceSourceType: sourceType,
+      mcpGuidanceFlags: {
+        deepWiki: sourceType === 'github',
+        context7: sourceType === 'npm',
+        firecrawl: sourceType === 'url',
+        staticOnly: sourceType === 'unknown'
+      },
       gatewayPath,
       gatewayFilename,
       gatewayRelativePath,
@@ -350,7 +607,17 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
       minimalMode: minimalModeRequested,
       deepWikiRepository,
       performance: performanceMetrics,
-      performanceSummary
+      performanceSummary,
+      documentationFetched,
+      fetchSource,
+      fetchDurationMs,
+      fetchAttempts,
+      aiGenerationEnabled,
+      aiToolUsed,
+      aiGenerationDurationMs,
+      aiGenerationAttempts,
+      aiGenerationFailed,
+      aiGenerationError
     }
   };
 };

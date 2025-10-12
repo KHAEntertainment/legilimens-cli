@@ -31,7 +31,17 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+Validate the plan against the active constitutional principles before proceeding:
+
+- Mission-Led Gateways: Work items keep gateway outputs lightweight, reference static backups, and avoid inlining large docs.
+- Immutable Template Format: Planned changes preserve the canonical gateway structure or include an approved amendment path; reference `docs/consitution-original.md` for exact layout verification.
+- Naming & Directory Discipline: Proposed files and directories follow `{type}_{name}_{descriptor}.md` inside the mandated `docs/` hierarchy.
+- Source Priority Chain: Fetcher work respects detection order (GitHub -> ref.tools, NPM -> Context7, URL -> Firecrawl) and the required fallback attempts.
+- Operational Guardrails: Runtime goals (<=10s typical, <=60s large), progress indicators, quality gates, and forbidden-action safeguards remain intact.
+- DeepWiki-First Guidance: Plans reinforce DeepWiki MCP as the live knowledge source and ensure gateway outputs include the canonical instructions block.
+- Reusable Node.js Core: CLI enhancements consume a shared TypeScript/Node module so other surfaces (e.g., future web services) can adopt the same logic without divergence.
+
+Document any exceptions in "Complexity Tracking" and secure maintainer approval before advancing.
 
 ## Project Structure
 

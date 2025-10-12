@@ -20,8 +20,8 @@ interface GenerateRequestBody {
     identifier: string;
   };
   metadata: {
-    deepWikiRepository: string;
-    staticBackupPath: string;
+    deepWikiRepository?: string; // Optional: will be derived automatically if not provided
+    staticBackupPath?: string; // Optional: core ignores this field anyway
     asciiAssetId?: string;
   };
   options?: {
@@ -62,11 +62,7 @@ export function createServer(): FastifyInstance {
       );
     }
 
-    if (!body?.metadata?.deepWikiRepository || !body?.metadata?.staticBackupPath) {
-      return reply.code(400).send(
-        toBadRequest('DeepWiki repository and static-backup path are required.')
-      );
-    }
+    // staticBackupPath is optional since core ignores this field
 
     if (!body?.templateVersion) {
       return reply.code(400).send(toBadRequest('Template version must be provided.'));
@@ -85,17 +81,27 @@ export function createServer(): FastifyInstance {
       const docsDir = runtime.directories.docsDir;
       const templatePath = resolve(docsDir, 'templates/legilimens-template.md');
 
+      const variables: Record<string, any> = {
+        dependencyType: body.dependency.type,
+        dependencyIdentifier: body.dependency.identifier,
+        ...(body.metadata.staticBackupPath && { staticBackupPath: body.metadata.staticBackupPath })
+      };
+
+      // Only include deepWikiRepository if provided
+      if (body.metadata.deepWikiRepository) {
+        variables.deepWikiRepository = body.metadata.deepWikiRepository;
+      }
+
+      // Include optional fields
+      if (body.metadata.asciiAssetId) {
+        variables.asciiAssetId = body.metadata.asciiAssetId;
+      }
+
       const result: GatewayGenerationResult = await generateGatewayDoc({
         templatePath,
         targetDirectory: docsDir,
         context: {
-          variables: {
-            dependencyType: body.dependency.type,
-            dependencyIdentifier: body.dependency.identifier,
-            deepWikiRepository: body.metadata.deepWikiRepository,
-            staticBackupPath: body.metadata.staticBackupPath,
-            asciiAssetId: body.metadata.asciiAssetId
-          },
+          variables,
           minimalMode: Boolean(body.options?.minimalMode)
         }
       });
@@ -109,7 +115,9 @@ export function createServer(): FastifyInstance {
         gateway: {
           filename: result.metadata.gatewayRelativePath,
           content: gatewayContent,
-          deepWikiGuidanceIncluded: result.metadata.deepWikiGuidanceIncluded
+          deepWikiGuidanceIncluded: result.metadata.mcpGuidanceFlags.deepWiki,
+          mcpGuidanceSourceType: result.metadata.mcpGuidanceSourceType,
+          mcpGuidanceFlags: result.metadata.mcpGuidanceFlags
         },
         staticBackup: {
           filename: result.metadata.staticBackupRelativePath,

@@ -1,3 +1,7 @@
+export type DependencyType = 'framework' | 'api' | 'library' | 'tool' | 'other';
+
+export type SourceType = 'github' | 'npm' | 'url' | 'unknown';
+
 export interface GatewayRequestContext {
   /**
    * Arbitrary variables extracted from the gateway template to drive generation.
@@ -31,11 +35,17 @@ export interface GatewayProgressEvent {
 
 export interface GatewayGenerationMetadata {
   sessionId: string;
-  dependencyType: string;
+  dependencyType: DependencyType;
   dependencyIdentifier: string;
   templateValidated: boolean;
   generationDurationMs: number;
-  deepWikiGuidanceIncluded: boolean;
+  mcpGuidanceSourceType: SourceType;
+  mcpGuidanceFlags: {
+    deepWiki: boolean;
+    context7: boolean;
+    firecrawl: boolean;
+    staticOnly: boolean;
+  };
   gatewayPath: string;
   gatewayFilename: string;
   gatewayRelativePath: string;
@@ -46,6 +56,16 @@ export interface GatewayGenerationMetadata {
   deepWikiRepository?: string;
   performance: PerformanceMetrics;
   performanceSummary: string;
+  documentationFetched: boolean;
+  fetchSource?: string;
+  fetchDurationMs?: number;
+  fetchAttempts?: string[];
+  aiGenerationEnabled: boolean;
+  aiToolUsed?: string;
+  aiGenerationDurationMs?: number;
+  aiGenerationAttempts?: string[];
+  aiGenerationFailed?: boolean;
+  aiGenerationError?: string;
 }
 
 export interface GatewayGenerationResult {

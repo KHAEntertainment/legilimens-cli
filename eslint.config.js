@@ -8,14 +8,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 export default tseslint.config(
   {
     ignores: [
-      'node_modules',
-      'dist',
-      'coverage',
-      'build',
+      'node_modules/**',
+      'dist/**',
+      'coverage/**',
+      'build/**',
       'eslint.config.js',
-      'tests/integration',
-      'packages/*/tests',
-      'packages/*/scripts',
+      'tests/integration/**',
+      'packages/*/tests/**',
+      'packages/*/scripts/**',
+      'packages/*/dist/**',
       'vitest.config.ts'
     ]
   },

@@ -712,6 +712,21 @@ This command executes: `legilimens <dependency> --type <type>`
 
 ---
 
+## Implementation Notes
+
+### Automatic MCP Tool Detection (2025 Update)
+The implementation now correctly follows the original SDP intent: users provide plain language dependency identifiers, and the system automatically determines the appropriate MCP tool (DeepWiki for GitHub, Context7 for NPM, Firecrawl for URLs) without requiring manual URL entry. This fixes the drift that occurred where users were forced to manually provide DeepWiki URLs through interactive prompts, batch JSON format, or environment variables.
+
+**Key Changes:**
+- Removed user-facing DeepWiki prompts from interactive wizard
+- Made `deepWikiRepository` optional in all interfaces
+- Enhanced core module to automatically derive DeepWiki URLs when not provided
+- Updated CLI layer to rely on automatic derivation rather than user input
+- Modified batch processing to trust core module's automatic derivation
+- Updated documentation to reflect automatic MCP tool selection
+
+This aligns with the SDP principle: users provide WHAT (dependency identifier), the system determines HOW (which MCP tool, which URL).
+
 ## END OF SDP/PRD
 
 **NEXT STEP FOR CLAUDE CODE:**

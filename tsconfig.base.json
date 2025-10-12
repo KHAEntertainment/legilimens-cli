@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@legilimens/core/*": ["packages/core/src/*"],
+      "@legilimens/cli/*": ["packages/cli/src/*"],
+      "@legilimens/harness-service/*": ["packages/harness-service/src/*"]
+    },
+    "types": ["node"]
+  }
+}
