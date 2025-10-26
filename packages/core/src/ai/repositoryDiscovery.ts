@@ -21,20 +21,18 @@ export interface RepositoryDiscoveryResult {
 
 /**
  * Discover repository information using AI CLI agents
- * 
+ *
  * @param naturalLanguageInput - Human-readable description (e.g., "Jumpcloud API 2.0")
- * @param dependencyType - The type of dependency (api, framework, library, tool, other)
  * @returns Promise resolving to discovery result
  */
 export async function discoverRepositoryWithAI(
-  naturalLanguageInput: string,
-  dependencyType: string
+  naturalLanguageInput: string
 ): Promise<RepositoryDiscoveryResult> {
   const runtimeConfig = getRuntimeConfig();
   if (!runtimeConfig.localLlm?.enabled || !runtimeConfig.tavily?.enabled) {
     return { success: false, confidence: 'low', error: 'Local LLM or Tavily disabled' };
   }
-  const pr = await discoverWithPipeline(naturalLanguageInput, dependencyType);
+  const pr = await discoverWithPipeline(naturalLanguageInput);
   return {
     success: pr.confidence !== 'low',
     canonicalIdentifier: pr.normalizedIdentifier,

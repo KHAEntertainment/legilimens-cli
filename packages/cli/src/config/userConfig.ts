@@ -3,7 +3,8 @@ import { join } from 'path';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'fs';
 import type { CliToolName } from '@legilimens/core';
 import type { RuntimeConfig } from '@legilimens/core';
-import { saveApiKey, getApiKey, isKeychainAvailable } from './secrets.js';
+import { saveApiKey, getApiKey, isKeychainAvailable, areKeysConfigured, validateStoredKeys, createStorageErrorMessage } from './secrets.js';
+import { getLlamaPaths } from '../utils/llamaInstaller.js';
 
 export interface UserConfig {
   apiKeys: {
@@ -98,6 +99,7 @@ export const saveUserConfig = async (config: UserConfig): Promise<{ success: boo
     // Store API keys securely if present
     const apiKeysToStore = config.apiKeys;
     const hasApiKeys = Object.values(apiKeysToStore).some(Boolean);
+    const storedServices: string[] = [];
     
     if (hasApiKeys) {
       // Store each API key in keychain/file storage
@@ -105,11 +107,32 @@ export const saveUserConfig = async (config: UserConfig): Promise<{ success: boo
         if (key) {
           const result = await saveApiKey(service, key);
           if (!result.success) {
+            const errorMsg = createStorageErrorMessage(result.error || 'Unknown error', service);
             return {
               success: false,
-              error: `Failed to store API key for ${service}: ${result.error}`
+              error: errorMsg
             };
           }
+          storedServices.push(service);
+        }
+      }
+      
+      // Post-save validation: verify keys are retrievable
+      if (storedServices.length > 0) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[userConfig] Running post-save validation for ${storedServices.length} keys`);
+        }
+        
+        const validation = await validateStoredKeys(storedServices);
+        if (!validation.success) {
+          return {
+            success: false,
+            error: `Configuration saved but could not be verified. Failed to retrieve: ${validation.failed.join(', ')}. Please restart setup wizard.`
+          };
+        }
+        
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[userConfig] Post-save validation passed for all ${storedServices.length} keys`);
         }
       }
     }
@@ -212,25 +235,71 @@ export const mergeWithEnvVars = async (
 };
 
 /**
- * Check if setup is required
+ * Check if setup is required (async to check stored API keys and local LLM configuration)
  */
-export const isSetupRequired = (env: NodeJS.ProcessEnv = process.env): boolean => {
+export const isSetupRequired = async (env: NodeJS.ProcessEnv = process.env): Promise<boolean> => {
   // If LEGILIMENS_SKIP_SETUP is set to true, skip setup
   if (env.LEGILIMENS_SKIP_SETUP?.toLowerCase() === 'true') {
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug('[isSetupRequired] LEGILIMENS_SKIP_SETUP=true, skipping setup');
+    }
     return false;
   }
 
   const userConfig = loadUserConfig();
 
-  // If setup was completed, skip wizard
-  if (userConfig.setupCompleted) {
+  // Check for stored API keys (Tavily is required)
+  // This now verifies keys are actually retrievable, not just that setupCompleted=true
+  const keyStatus = await areKeysConfigured(['tavily']);
+  const tavilyKeyRetrievable = keyStatus.tavily || Boolean(env.TAVILY_API_KEY);
+
+  // Helper to expand tilde in paths
+  const expandTilde = (value: string | undefined): string => {
+    if (!value || typeof value !== 'string') {
+      return '';
+    }
+    return value.replace(/^~(?=\/|$)/, homedir());
+  };
+
+  // Check for local LLM configuration via env vars
+  const envBinPath = expandTilde(env.LEGILIMENS_LOCAL_LLM_BIN);
+  const envModelPath = expandTilde(env.LEGILIMENS_LOCAL_LLM_MODEL);
+  const localLlmEnvConfigured =
+    env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' &&
+    Boolean(envBinPath) &&
+    Boolean(envModelPath) &&
+    existsSync(envBinPath) &&
+    existsSync(envModelPath);
+
+  // Check for existing llama.cpp installation in ~/.legilimens
+  const paths = getLlamaPaths();
+  const localLlmInstalled = existsSync(paths.binaryPath) && existsSync(paths.modelPath);
+
+  if (process.env.LEGILIMENS_DEBUG) {
+    console.debug(`[isSetupRequired] setupCompleted=${userConfig.setupCompleted}, tavilyKeyRetrievable=${tavilyKeyRetrievable}, localLlmEnvConfigured=${localLlmEnvConfigured}, localLlmInstalled=${localLlmInstalled}`);
+  }
+
+  // Skip setup only if (Tavily OR Local LLM) is configured AND retrievable
+  // 1. Setup was completed AND Tavily key is retrievable (in storage or env)
+  if (userConfig.setupCompleted && tavilyKeyRetrievable) {
     return false;
   }
 
-  // If environment variables are set, skip wizard
-  if (env.FIRECRAWL_API_KEY || env.CONTEXT7_API_KEY || env.REFTOOLS_API_KEY || env.LEGILIMENS_AI_CLI_TOOL) {
+  // 2. Local LLM is fully configured via env vars (Tavily key not required if Local LLM present)
+  if (localLlmEnvConfigured) {
     return false;
   }
 
+  // 3. Local LLM is installed in ~/.legilimens (Tavily key not required if Local LLM present)
+  if (localLlmInstalled) {
+    return false;
+  }
+
+  // 4. Tavily key is retrievable alone (without local LLM)
+  if (tavilyKeyRetrievable) {
+    return false;
+  }
+
+  // If neither Tavily nor Local LLM is configured, setup is required
   return true;
 };

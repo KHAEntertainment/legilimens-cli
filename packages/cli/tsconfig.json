@@ -5,7 +5,7 @@
     "outDir": "dist",
     "rootDir": ".",
     "jsx": "react-jsx",
-    "noEmit": false
+    "noEmit": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "bin/**/*.ts", "types/**/*.d.ts"]
 }

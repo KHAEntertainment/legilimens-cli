@@ -19,6 +19,7 @@ export interface DetectionResult {
 export interface AsyncDetectionResult extends DetectionResult {
   aiAssisted?: boolean;
   aiToolUsed?: string;
+  dependencyType?: string;
 }
 
 // Detection Patterns
@@ -52,22 +53,21 @@ const NON_PACKAGE_PATTERNS = [
 
 /**
  * AI-assisted repository discovery using CLI agents
- * 
+ *
  * @param input - Natural language description (e.g., "Jumpcloud API 2.0")
- * @param dependencyType - The type of dependency (api, framework, library, tool, other)
  * @returns Promise resolving to canonical identifier if AI can find it, original input otherwise
  */
-async function discoverRepositoryWithAI(input: string, dependencyType: string): Promise<string> {
+async function discoverRepositoryWithAI(input: string): Promise<string> {
   try {
     // Import here to avoid circular dependencies
     const { discoverRepositoryWithAI: aiDiscovery } = await import('../ai/repositoryDiscovery.js');
-    
-    const result = await aiDiscovery(input, dependencyType);
-    
+
+    const result = await aiDiscovery(input);
+
     if (result.success && result.canonicalIdentifier && result.confidence !== 'low') {
       return result.canonicalIdentifier;
     }
-    
+
     return input;
   } catch (error) {
     // If AI discovery fails, return original input
@@ -228,12 +228,10 @@ export function deriveDeepWikiUrl(input: string): string | null {
  * Detects the source type of a dependency identifier with AI assistance
  *
  * @param input - The dependency identifier to detect
- * @param dependencyType - The type of dependency (api, framework, library, tool, other)
- * @returns Promise resolving to detection result with AI assistance metadata
+ * @returns Promise resolving to detection result with AI assistance metadata including dependency type
  */
 export async function detectSourceTypeWithAI(
-  input: string, 
-  dependencyType: string = 'other'
+  input: string
 ): Promise<AsyncDetectionResult> {
   // Normalize input
   const trimmed = input.trim();
@@ -262,11 +260,12 @@ export async function detectSourceTypeWithAI(
   // Try AI-assisted discovery via local pipeline (llama.cpp + Tavily)
   try {
     const { discoverWithPipeline } = await import('../ai/repositoryDiscoveryPipeline.js');
-    const pr = await discoverWithPipeline(trimmed, dependencyType);
+    const pr = await discoverWithPipeline(trimmed);
     return {
       sourceType: pr.sourceType,
       normalizedIdentifier: pr.normalizedIdentifier,
       confidence: pr.confidence,
+      dependencyType: pr.dependencyType,
       aiAssisted: true,
     };
   } catch (error) {

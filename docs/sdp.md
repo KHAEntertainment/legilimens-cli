@@ -701,7 +701,7 @@ This command executes: `legilimens <dependency> --type <type>`
 
 ---
 
-## 🎁 BONUS FEATURES (Post-MVP)
+## 🎁 UPCOMING FEATURES (Post-MVP)
 
 ### Phase 2 Enhancements
 1. **Batch Mode**: Process multiple dependencies from config file

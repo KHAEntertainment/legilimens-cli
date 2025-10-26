@@ -16,18 +16,21 @@ import {
   createPerformanceTracker,
   summarizePerformance
 } from './telemetry/performance.js';
-import { getRuntimeConfig, isAiGenerationEnabled } from './config/runtimeConfig.js';
+import { getRuntimeConfig, isAiGenerationEnabled, isLocalLlmEnabled } from './config/runtimeConfig.js';
 import { fetchDocumentation } from './fetchers/orchestrator.js';
 import { isFetchSuccess } from './fetchers/types.js';
 import { generateWithCliTool } from './ai/cliOrchestrator.js';
 import {
   buildGatewayGenerationPrompt,
-  parseAiResponse,
-  generateFallbackContent
+  extractShortDescription,
+  generateFallbackContent,
+  type AiGeneratedContent
 } from './ai/promptBuilder.js';
 import { condenseDocumentation, estimateTokens } from './ai/documentChunker.js';
 import { type CliToolName } from './ai/cliDetector.js';
-import { detectSourceType, deriveDeepWikiUrl, type SourceType } from './detection/sourceDetector.js';
+import { deriveDeepWikiUrl, type SourceType } from './detection/sourceDetector.js';
+import { normalizeIdentifier, type NormalizedIdentifier } from './detection/normalizeIdentifier.js';
+import { runLocalJson } from './ai/localLlmRunner.js';
 
 const VALID_DEPENDENCY_TYPES: ReadonlySet<DependencyType> = new Set([
   'framework',
@@ -83,16 +86,6 @@ const slugify = (value: string): string =>
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '') || 'dependency';
-
-const toDisplayName = (value: string): string =>
-  value
-    .replace(/[-_/]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
-    .join(' ') || 'Unknown Dependency';
 
 const ensureDirectory = async (path: string): Promise<void> => {
   await mkdir(path, { recursive: true });
@@ -189,26 +182,41 @@ const buildMcpGuidance = (args: {
   }
 };
 
-const deriveOfficialSource = (dependencyIdentifier: string, deepWikiRepository: string | undefined, sourceType: SourceType): string => {
-  // Return canonical source URLs based on source type
-  if (sourceType === 'github') {
-    if (dependencyIdentifier.includes('/')) {
-      return `https://github.com/${dependencyIdentifier.replace(/^https?:\/\//, '')}`;
+const deriveOfficialSource = (identifier: NormalizedIdentifier, deepWikiRepository: string | undefined): string => {
+  const raw = identifier.raw.trim();
+  const normalized = identifier.normalized;
+
+  if (identifier.sourceType === 'github') {
+    const githubMatch = raw.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^\s?#]+)(?:[?#].*)?$/i);
+    if (githubMatch?.[1]) {
+      return `https://github.com/${githubMatch[1].replace(/\.git$/, '')}`;
     }
-    return deepWikiRepository || `https://github.com/${dependencyIdentifier}`;
+
+    if (/^(?:www\.)?github\.com\//i.test(raw)) {
+      const cleaned = raw.replace(/^www\./i, '');
+      return cleaned.startsWith('http') ? cleaned : `https://${cleaned}`;
+    }
+
+    if (normalized.includes('/')) {
+      return `https://github.com/${normalized.replace(/\.git$/, '')}`;
+    }
+
+    return deepWikiRepository || (raw ? `https://github.com/${raw}` : `https://github.com/${normalized}`);
   }
-  
-  if (sourceType === 'npm' || (!dependencyIdentifier.includes('://') && !dependencyIdentifier.includes('/'))) {
-    return `https://www.npmjs.com/package/${dependencyIdentifier}`;
+
+  if (identifier.sourceType === 'npm') {
+    return `https://www.npmjs.com/package/${normalized}`;
   }
-  
-  // For URLs and unknown, return the identifier directly
-  if (dependencyIdentifier.includes('://')) {
-    return dependencyIdentifier;
+
+  if (raw.includes('://')) {
+    return raw;
   }
-  
-  // Fallback
-  return deepWikiRepository || dependencyIdentifier;
+
+  if (normalized.includes('://')) {
+    return normalized;
+  }
+
+  return deepWikiRepository || raw || normalized;
 };
 
 export const validateTemplate: ValidateTemplate = async (
@@ -327,6 +335,10 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     (typeof variables.dependencyIdentifier === 'string' && variables.dependencyIdentifier.trim()) ||
     'unknown-dependency';
   const dependencyType = sanitizeDependencyType(variables.dependencyType);
+  const normalizedIdentifier = normalizeIdentifier(dependencyIdentifier);
+  const sourceType = normalizedIdentifier.sourceType;
+  const displayName = normalizedIdentifier.displayName;
+  const slug = slugify(normalizedIdentifier.normalized);
   
   // Automatically derive deepWikiRepository when not provided
   const providedDeepWiki = typeof variables.deepWikiRepository === 'string' && variables.deepWikiRepository.trim();
@@ -336,12 +348,6 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     ? providedDeepWiki 
     : (derivedDeepWiki || undefined);
 
-  // Detect source type early since it's needed for content generation
-  const sourceDetection = detectSourceType(dependencyIdentifier);
-  const sourceType = sourceDetection.sourceType;
-
-  const displayName = toDisplayName(dependencyIdentifier);
-  const slug = slugify(dependencyIdentifier);
   const gatewayDirectory = resolve(request.targetDirectory, TYPE_DIRECTORY[dependencyType]);
   const staticDirectory = resolve(gatewayDirectory, 'static-backup');
   await ensureDirectory(gatewayDirectory);
@@ -357,6 +363,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
 
   // Fetch real documentation first
   const runtimeConfig = getRuntimeConfig();
+  const localLlmConfigured = isLocalLlmEnabled(runtimeConfig);
   const fetchStartTime = Date.now();
   const fetchResult = await fetchDocumentation(dependencyIdentifier, runtimeConfig);
   const fetchDurationMs = Date.now() - fetchStartTime;
@@ -399,10 +406,15 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
   let aiGenerationAttempts: string[] | undefined;
   let aiGenerationFailed = false;
   let aiGenerationError: string | undefined;
+  let aiGenerationMethod: 'local-llm' | 'external-cli' | undefined;
+  let aiEnginesUnavailable = false;
+  let aiEnginesUnavailableReason: string | undefined;
+  let localLlmSucceeded = false;
+  let localLlmAvailabilityError: string | undefined;
 
   // Try AI generation if enabled
-  let shortDescription: string;
-  let featureList: string[];
+  let shortDescription = '';
+  let featureList: string[] = [];
 
   if (isAiGenerationEnabled(runtimeConfig)) {
     aiGenerationEnabled = true;
@@ -418,56 +430,132 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
         dependencyType,
         fetchedDocumentation: preparedDocs,
         deepWikiUrl: deepWikiRepository,
-        officialSourceUrl: deriveOfficialSource(dependencyIdentifier, deepWikiRepository, sourceType)
+        officialSourceUrl: deriveOfficialSource(normalizedIdentifier, deepWikiRepository)
       });
 
-      // Validate and set preferred tool
-      const preferred = (['gemini','codex','claude','qwen'] as const)
-        .includes(runtimeConfig.aiCliConfig.preferredTool as any)
-        ? (runtimeConfig.aiCliConfig.preferredTool as CliToolName)
-        : undefined;
+      const generationAttempts: string[] = [];
 
-      // Invoke AI CLI orchestrator
-      const aiResult = await generateWithCliTool(prompt, {
-        preferredTool: preferred,
-        timeoutMs: runtimeConfig.aiCliConfig.timeoutMs,
-        commandOverride: runtimeConfig.aiCliConfig.commandOverride
-      });
+      if (localLlmConfigured) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug('[gateway] Attempting AI generation with local LLM');
+        }
+        const localResult = await runLocalJson<AiGeneratedContent>({ prompt });
 
-      aiGenerationDurationMs = Date.now() - aiStartTime;
-      aiGenerationAttempts = aiResult.attempts;
+        if (localResult.attempts > 0) {
+          for (let i = 0; i < localResult.attempts; i += 1) {
+            generationAttempts.push('local-llm');
+          }
+        }
 
-      if (aiResult.success && aiResult.content) {
-        // Parse AI response
-        const aiContent = parseAiResponse(aiResult.content);
-        shortDescription = aiContent.shortDescription;
-        // Use buildFeatureList to ensure source-appropriate MCP guidance
-        featureList = buildFeatureList({
-          dependencyName: displayName,
-          dependencyType,
-          staticBackupLink,
-          minimalMode: minimalModeRequested,
-          sourceType
-        });
-        
-        aiToolUsed = aiResult.toolUsed;
+        if (localResult.success && localResult.json) {
+          const localContent = localResult.json as Partial<AiGeneratedContent>;
+          if (
+            typeof localContent?.shortDescription === 'string' &&
+            Array.isArray(localContent.features)
+          ) {
+            localLlmSucceeded = true;
+            aiGenerationMethod = 'local-llm';
+            aiGenerationDurationMs = Date.now() - aiStartTime;
+            aiGenerationAttempts = generationAttempts.length ? [...generationAttempts] : undefined;
+            shortDescription = localContent.shortDescription;
+            featureList = buildFeatureList({
+              dependencyName: displayName,
+              dependencyType,
+              staticBackupLink,
+              minimalMode: minimalModeRequested,
+              sourceType
+            });
+            if (process.env.LEGILIMENS_DEBUG) {
+              console.debug(`[gateway] Local LLM success in ${aiGenerationDurationMs}ms after ${generationAttempts.length} attempts`);
+            }
+          } else {
+            localLlmAvailabilityError = 'Invalid JSON from local LLM';
+            console.warn('[gateway] Local LLM returned invalid content structure; falling back to external CLI tools.');
+          }
+        } else {
+          localLlmAvailabilityError = localResult.error ?? 'Local LLM generation failed';
+          if (localResult.error) {
+            console.warn(`[gateway] Local LLM generation failed: ${localResult.error}`);
+          }
+        }
       } else {
-        // AI generation failed, use fallback
-        aiGenerationFailed = true;
-        aiGenerationError = aiResult.error;
-        const fallbackContent = generateFallbackContent({
-          dependencyName: displayName,
-          dependencyType,
-          fetchedDocumentation: staticContent
+        localLlmAvailabilityError = 'Local LLM disabled';
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug('[gateway] Local LLM not configured, skipping to external CLI tools');
+        }
+      }
+
+      if (!localLlmSucceeded) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug('[gateway] Falling back to external CLI tools');
+        }
+        
+        const preferred = (['gemini','codex','claude','qwen'] as const)
+          .includes(runtimeConfig.aiCliConfig.preferredTool as any)
+          ? (runtimeConfig.aiCliConfig.preferredTool as CliToolName)
+          : undefined;
+
+        aiGenerationMethod = 'external-cli';
+        const aiResult = await generateWithCliTool(prompt, {
+          preferredTool: preferred,
+          timeoutMs: runtimeConfig.aiCliConfig.timeoutMs,
+          commandOverride: runtimeConfig.aiCliConfig.commandOverride
         });
-        shortDescription = fallbackContent.shortDescription;
-        featureList = buildFeatureList({
-          dependencyName: displayName,
-          dependencyType,
-          staticBackupLink,
-          minimalMode: minimalModeRequested,
-          sourceType
-        });
+
+        aiGenerationDurationMs = Date.now() - aiStartTime;
+        const combinedAttempts = [
+          ...generationAttempts,
+          ...(aiResult.attempts ?? [])
+        ];
+        aiGenerationAttempts = combinedAttempts.length ? combinedAttempts : undefined;
+
+        if (aiResult.success && aiResult.content) {
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug(`[gateway] External CLI tool success: ${aiResult.toolUsed} in ${aiGenerationDurationMs}ms`);
+          }
+          shortDescription = extractShortDescription(aiResult.content);
+          featureList = buildFeatureList({
+            dependencyName: displayName,
+            dependencyType,
+            staticBackupLink,
+            minimalMode: minimalModeRequested,
+            sourceType
+          });
+          aiToolUsed = aiResult.toolUsed;
+        } else {
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug(`[gateway] External CLI tools failed, using fallback content`);
+          }
+          aiGenerationFailed = true;
+          aiGenerationError = aiResult.error;
+          const fallbackContent = generateFallbackContent({
+            dependencyName: displayName,
+            dependencyType,
+            fetchedDocumentation: staticContent
+          });
+          shortDescription = fallbackContent.shortDescription;
+          featureList = buildFeatureList({
+            dependencyName: displayName,
+            dependencyType,
+            staticBackupLink,
+            minimalMode: minimalModeRequested,
+            sourceType
+          });
+          aiToolUsed = aiResult.toolUsed;
+
+          const lowerError = aiResult.error?.toLowerCase() ?? '';
+          const toolUnavailable = lowerError.includes('no ai cli tools detected') ||
+            lowerError.includes('command not found') ||
+            lowerError.includes('enoent');
+          if (toolUnavailable && !localLlmSucceeded) {
+            aiEnginesUnavailable = true;
+            const localReason = localLlmConfigured
+              ? `Local LLM unavailable${localLlmAvailabilityError ? ` (${localLlmAvailabilityError})` : ''}`
+              : 'Local LLM disabled';
+            aiEnginesUnavailableReason = `${localReason}; ${aiResult.error ?? 'AI CLI tool not available'}`;
+            console.warn(`[gateway] All AI engines unavailable: ${aiEnginesUnavailableReason}`);
+          }
+        }
       }
     } catch (error) {
       // AI generation error, use fallback
@@ -515,7 +603,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     sourceType
   });
 
-  const officialSourceUrl = deriveOfficialSource(dependencyIdentifier, deepWikiRepository, sourceType);
+  const officialSourceUrl = deriveOfficialSource(normalizedIdentifier, deepWikiRepository);
   const officialSourceLink = `[Official ${displayName} reference](${officialSourceUrl})`;
 
   const replacements = {
@@ -569,10 +657,19 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     ? `Documentation fetched from ${fetchSource} in ${fetchDurationMs}ms.`
     : 'Documentation fetch failed; placeholder created.';
 
+  const durationSuffix = aiGenerationDurationMs ? ` in ${aiGenerationDurationMs}ms.` : '.';
   const aiStatusMsg = aiGenerationEnabled
-    ? aiToolUsed
-      ? `AI generation succeeded with ${aiToolUsed} in ${aiGenerationDurationMs}ms.`
-      : `AI generation failed; used fallback content.`
+    ? aiGenerationFailed
+      ? 'AI generation failed; used fallback content.'
+      : aiGenerationMethod === 'local-llm'
+        ? `AI generation succeeded with local LLM${durationSuffix}`
+        : aiGenerationMethod === 'external-cli' && aiToolUsed
+          ? `AI generation succeeded with ${aiToolUsed} (external CLI)${durationSuffix}`
+          : 'AI generation succeeded.'
+    : '';
+
+  const aiUnavailableSuffix = aiEnginesUnavailable
+    ? ` AI engines unavailable (${aiEnginesUnavailableReason ?? 'local LLM disabled and no external CLI tools detected'}).`
     : '';
 
   const summary = buildSummary({
@@ -583,7 +680,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     deepWikiRepository,
     performanceSummary,
     sourceType
-  }) + ` ${fetchStatusMsg}` + (aiStatusMsg ? ` ${aiStatusMsg}` : '');
+  }) + ` ${fetchStatusMsg}` + (aiStatusMsg ? ` ${aiStatusMsg}` : '') + aiUnavailableSuffix;
 
   return {
     documentPath: gatewayPath,
@@ -618,10 +715,15 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
       fetchAttempts,
       aiGenerationEnabled,
       aiToolUsed,
+      aiGenerationMethod,
       aiGenerationDurationMs,
       aiGenerationAttempts,
       aiGenerationFailed,
-      aiGenerationError
+      aiGenerationError,
+      aiEnginesUnavailable,
+      aiEnginesUnavailableReason,
+      localLlmAvailabilityError,
+      localLlmConfigured
     }
   };
 };

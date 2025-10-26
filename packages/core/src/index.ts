@@ -22,6 +22,7 @@ export {
   getRuntimeConfig,
   getAiCliConfig,
   isAiGenerationEnabled,
+  isLocalLlmEnabled,
   getPreferredAiTool,
   MINIMUM_NODE_MAJOR
 } from './config/runtimeConfig.js';
@@ -107,6 +108,7 @@ export type {
 } from './ai/promptBuilder.js';
 export {
   buildGatewayGenerationPrompt,
+  extractShortDescription,
   parseAiResponse,
   generateFallbackContent
 } from './ai/promptBuilder.js';

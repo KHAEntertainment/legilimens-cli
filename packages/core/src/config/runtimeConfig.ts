@@ -44,6 +44,10 @@ export interface AiCliConfig {
   commandOverride?: string;
 }
 
+/**
+ * Local LLM configuration. All of `enabled`, `binaryPath`, and `modelPath`
+ * must be populated for local inference to be considered available.
+ */
 export interface LocalLlmConfig {
   enabled: boolean;
   binaryPath?: string;
@@ -209,6 +213,17 @@ export const getAiCliConfig = (config: RuntimeConfig): AiCliConfig => {
  */
 export const isAiGenerationEnabled = (config: RuntimeConfig): boolean => {
   return config.aiCliConfig.enabled;
+};
+
+/**
+ * Helper to check if the local LLM is fully configured
+ */
+export const isLocalLlmEnabled = (config: RuntimeConfig): boolean => {
+  return Boolean(
+    config.localLlm?.enabled &&
+    config.localLlm?.binaryPath &&
+    config.localLlm?.modelPath
+  );
 };
 
 /**

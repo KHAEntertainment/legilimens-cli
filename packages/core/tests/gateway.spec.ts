@@ -10,6 +10,7 @@ import {
 } from '../src/index.js';
 import * as orchestrator from '../src/fetchers/orchestrator.js';
 import * as cliOrchestrator from '../src/ai/cliOrchestrator.js';
+import * as localLlmRunner from '../src/ai/localLlmRunner.js';
 import * as runtimeConfig from '../src/config/runtimeConfig.js';
 import { type SourceType } from '../src/detection/sourceDetector.js';
 
@@ -53,6 +54,7 @@ const assertMcpGuidanceForSourceType = (content: string, expectedSourceType: Sou
 
 vi.mock('../src/fetchers/orchestrator.js');
 vi.mock('../src/ai/cliOrchestrator.js');
+vi.mock('../src/ai/localLlmRunner.js');
 vi.mock('../src/config/runtimeConfig.js');
 
 const repoRoot = fileURLToPath(new URL('../../..', import.meta.url)); // repository root
@@ -74,6 +76,13 @@ describe('Legilimens core gateway module', () => {
     vi.mocked(orchestrator.fetchDocumentation).mockResolvedValue({
       success: false,
       error: 'Default mock failure'
+    });
+
+    vi.mocked(cliOrchestrator.generateWithCliTool).mockResolvedValue({
+      success: false,
+      error: 'Default mock failure',
+      attempts: [],
+      durationMs: 0
     });
 
     // Mock runtime config to enable AI generation by default
@@ -100,6 +109,7 @@ describe('Legilimens core gateway module', () => {
     });
 
     vi.mocked(runtimeConfig.isAiGenerationEnabled).mockReturnValue(true);
+    vi.mocked(runtimeConfig.isLocalLlmEnabled).mockReturnValue(false);
   });
 
   afterEach(async () => {
@@ -326,10 +336,11 @@ describe('Legilimens core gateway module', () => {
 
       expect(result.metadata.aiGenerationEnabled).toBe(true);
       expect(result.metadata.aiToolUsed).toBe('gemini');
+      expect(result.metadata.aiGenerationMethod).toBe('external-cli');
       expect(result.metadata.aiGenerationDurationMs).toBeGreaterThanOrEqual(0);
       expect(result.metadata.aiGenerationAttempts).toContain('gemini');
       expect(result.metadata.aiGenerationFailed).toBe(false);
-      expect(result.summary).toContain('AI generation succeeded with gemini');
+      expect(result.summary).toContain('AI generation succeeded with gemini (external CLI)');
 
       const gatewayContent = await readFile(join(tempRoot, result.metadata.gatewayRelativePath), 'utf8');
       expect(gatewayContent).toContain('AI-generated description for React');
@@ -362,6 +373,7 @@ describe('Legilimens core gateway module', () => {
 
       expect(result.metadata.aiGenerationEnabled).toBe(true);
       expect(result.metadata.aiToolUsed).toBeUndefined();
+      expect(result.metadata.aiGenerationMethod).toBe('external-cli');
       expect(result.metadata.aiGenerationFailed).toBe(true);
       expect(result.metadata.aiGenerationError).toBe('AI tool timeout after 30 seconds');
       expect(result.summary).toContain('AI generation failed; used fallback content');
@@ -391,6 +403,7 @@ describe('Legilimens core gateway module', () => {
 
       expect(result.metadata.aiGenerationEnabled).toBe(false);
       expect(result.metadata.aiToolUsed).toBeUndefined();
+      expect(result.metadata.aiGenerationMethod).toBeUndefined();
       expect(cliOrchestrator.generateWithCliTool).not.toHaveBeenCalled();
 
       const gatewayContent = await readFile(join(tempRoot, result.metadata.gatewayRelativePath), 'utf8');
@@ -416,6 +429,7 @@ describe('Legilimens core gateway module', () => {
       expect(result.metadata.aiGenerationEnabled).toBe(true);
       expect(result.metadata.aiGenerationFailed).toBe(true);
       expect(result.metadata.aiGenerationError).toBe('Network error');
+      expect(result.metadata.aiGenerationMethod).toBe('external-cli');
       expect(result.summary).not.toContain('AI generation succeeded');
 
       const gatewayContent = await readFile(join(tempRoot, result.metadata.gatewayRelativePath), 'utf8');
@@ -452,10 +466,123 @@ describe('Legilimens core gateway module', () => {
       expect(result.metadata).toMatchObject({
         aiGenerationEnabled: true,
         aiToolUsed: 'claude',
+        aiGenerationMethod: 'external-cli',
         aiGenerationAttempts: ['claude'],
         aiGenerationFailed: false
       });
       expect(result.metadata.aiGenerationDurationMs).toBeGreaterThanOrEqual(0);
+    });
+
+    it('uses local LLM when enabled and configured', async () => {
+      vi.mocked(runtimeConfig.isLocalLlmEnabled).mockReturnValue(true);
+      vi.mocked(localLlmRunner.runLocalJson).mockResolvedValue({
+        success: true,
+        raw: '{"shortDescription":"Local summary"}',
+        json: {
+          shortDescription: 'Local summary',
+          features: ['f1', 'f2', 'f3', 'f4', 'f5']
+        },
+        attempts: 1,
+        durationMs: 900
+      });
+
+      const request = {
+        templatePath,
+        targetDirectory: tempRoot,
+        context: {
+          variables: {
+            dependencyType: 'library',
+            dependencyIdentifier: 'lit'
+          }
+        }
+      };
+
+      const result = await generateGatewayDoc(request);
+
+      expect(localLlmRunner.runLocalJson).toHaveBeenCalledTimes(1);
+      expect(cliOrchestrator.generateWithCliTool).not.toHaveBeenCalled();
+      expect(result.metadata.aiGenerationMethod).toBe('local-llm');
+      expect(result.metadata.aiGenerationFailed).toBe(false);
+      expect(result.metadata.aiGenerationAttempts).toEqual(['local-llm']);
+      expect(result.summary).toContain('AI generation succeeded with local LLM');
+    });
+
+    it('falls back to external CLI tools when local LLM fails', async () => {
+      vi.mocked(runtimeConfig.isLocalLlmEnabled).mockReturnValue(true);
+      vi.mocked(localLlmRunner.runLocalJson).mockResolvedValue({
+        success: false,
+        raw: 'Invalid',
+        error: 'Invalid JSON',
+        attempts: 1,
+        durationMs: 700
+      });
+
+      const mockAiResult = {
+        success: true,
+        content: JSON.stringify({
+          shortDescription: 'CLI summary',
+          features: ['f1', 'f2', 'f3', 'f4', 'f5']
+        }),
+        toolUsed: 'claude',
+        attempts: ['claude'],
+        durationMs: 1500
+      };
+
+      vi.mocked(cliOrchestrator.generateWithCliTool).mockResolvedValue(mockAiResult);
+
+      const request = {
+        templatePath,
+        targetDirectory: tempRoot,
+        context: {
+          variables: {
+            dependencyType: 'library',
+            dependencyIdentifier: 'astro'
+          }
+        }
+      };
+
+      const result = await generateGatewayDoc(request);
+
+      expect(localLlmRunner.runLocalJson).toHaveBeenCalledTimes(1);
+      expect(cliOrchestrator.generateWithCliTool).toHaveBeenCalledTimes(1);
+      expect(result.metadata.aiGenerationMethod).toBe('external-cli');
+      expect(result.metadata.aiGenerationAttempts).toEqual(['local-llm', 'claude']);
+      expect(result.summary).toContain('AI generation succeeded with claude (external CLI)');
+    });
+
+    it('uses external CLI tools when local LLM is disabled', async () => {
+      vi.mocked(runtimeConfig.isLocalLlmEnabled).mockReturnValue(false);
+
+      const mockAiResult = {
+        success: true,
+        content: JSON.stringify({
+          shortDescription: 'CLI primary summary',
+          features: ['f1', 'f2', 'f3', 'f4', 'f5']
+        }),
+        toolUsed: 'gemini',
+        attempts: ['gemini'],
+        durationMs: 1200
+      };
+
+      vi.mocked(cliOrchestrator.generateWithCliTool).mockResolvedValue(mockAiResult);
+
+      const request = {
+        templatePath,
+        targetDirectory: tempRoot,
+        context: {
+          variables: {
+            dependencyType: 'library',
+            dependencyIdentifier: 'solid'
+          }
+        }
+      };
+
+      const result = await generateGatewayDoc(request);
+
+      expect(localLlmRunner.runLocalJson).not.toHaveBeenCalled();
+      expect(cliOrchestrator.generateWithCliTool).toHaveBeenCalledTimes(1);
+      expect(result.metadata.aiGenerationMethod).toBe('external-cli');
+      expect(result.summary).toContain('AI generation succeeded with gemini (external CLI)');
     });
   });
 

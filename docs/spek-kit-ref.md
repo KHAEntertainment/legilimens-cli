@@ -4,7 +4,7 @@
 │  2. Set CODEX_HOME environment variable before running   │
 │  Codex: export                                           │
 │  CODEX_HOME='/Users/bbrenner/Documents/Scripting         │
-│  Projects/legilimens-cli/.codex'                         │
+│  Projects/doc-gateway-cli/.codex'                        │
 │  3. Start using slash commands with your AI agent:       │
 │     2.1 /speckit.constitution - Establish project        │
 │  principles                                              │
@@ -23,7 +23,7 @@
 │                                                          │
 │  ○ /speckit.clarify (optional) - Ask structured          │
 │  questions to de-risk ambiguous areas before planning    │
-│  (run before /speckit.plan if used)                      │
+│  (run before /speckit.plan if used)                      │what d
 │  ○ /speckit.analyze (optional) - Cross-artifact          │
 │  consistency & alignment report (after /speckit.tasks,   │
 │  before /speckit.implement)                              │
@@ -32,3 +32,5 @@
 │  clarity, and consistency (after /speckit.plan)          │
 │                                                          │
 ╰──────────────────────────────────────────────────────────╯
+
+/  

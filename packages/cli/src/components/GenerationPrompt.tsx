@@ -159,7 +159,7 @@ export const GenerationPrompt: React.FC<GenerationPromptProps> = ({
 
     // Try AI-assisted detection first
     try {
-      const detection = await detectSourceTypeWithAI(input.trim(), values.dependencyType);
+      const detection = await detectSourceTypeWithAI(input.trim());
       setDetectedSource(detection.sourceType);
       setIsAiAssisted(detection.aiAssisted || false);
     } catch (error) {

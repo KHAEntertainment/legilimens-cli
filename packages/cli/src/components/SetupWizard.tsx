@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Box, Text, useInput } from 'ink';
 import TextInput from 'ink-text-input';
 import SelectInput from 'ink-select-input';
 import { detectInstalledCliTools, type CliToolName } from '@legilimens/core';
 import type { CliPreferences } from '../config/preferences.js';
 import { getStorageMethod } from '../config/secrets.js';
+import { loadAsciiBanner, type BannerResult } from '../assets/asciiBanner.js';
 
 export interface SetupConfig {
   apiKeys: {
@@ -77,6 +78,16 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
   const stepIndex = STEPS.findIndex(step => step.id === currentStep);
   const step = STEPS[stepIndex] ?? STEPS[0];
   const theme = preferences?.theme.formatters;
+
+  // Load ASCII banner for setup wizard
+  const banner: BannerResult = useMemo(() => {
+    const width = Math.min(80, process.stdout.columns ?? 80);
+    return loadAsciiBanner({
+      minimal: preferences?.minimal ?? false,
+      width,
+      externalPath: undefined
+    });
+  }, [preferences?.minimal]);
 
   useInput((input, key) => {
     if (key.escape || input?.toLowerCase() === 'q') {
@@ -156,6 +167,13 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
 
   return (
     <Box flexDirection="column" paddingX={2} paddingY={1}>
+      {/* ASCII Banner */}
+      {currentStep === 'welcome' && (
+        <Box marginBottom={2}>
+          <Text>{banner.lines.join('\n')}</Text>
+        </Box>
+      )}
+
       <Text>
         {theme?.accent(`Step ${stepIndex + 1} of ${STEPS.length}`) ?? `Step ${stepIndex + 1} of ${STEPS.length}`}
       </Text>

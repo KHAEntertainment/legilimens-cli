@@ -62,10 +62,15 @@ export interface GatewayGenerationMetadata {
   fetchAttempts?: string[];
   aiGenerationEnabled: boolean;
   aiToolUsed?: string;
+  aiGenerationMethod?: 'local-llm' | 'external-cli';
   aiGenerationDurationMs?: number;
   aiGenerationAttempts?: string[];
   aiGenerationFailed?: boolean;
   aiGenerationError?: string;
+  aiEnginesUnavailable?: boolean;
+  aiEnginesUnavailableReason?: string;
+  localLlmAvailabilityError?: string;
+  localLlmConfigured?: boolean;
 }
 
 export interface GatewayGenerationResult {

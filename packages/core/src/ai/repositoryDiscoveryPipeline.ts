@@ -9,24 +9,24 @@ export interface PipelineResult extends DetectionResult {
   aiAssisted: boolean;
   confidence: 'high' | 'medium' | 'low';
   searchSummary?: string;
+  dependencyType: 'framework' | 'api' | 'library' | 'tool' | 'other';
 }
 
-export async function discoverWithPipeline(natural: string, dependencyType: string): Promise<PipelineResult> {
-  const results = await searchPreferredSources(buildQuery(natural, dependencyType), dependencyType);
+export async function discoverWithPipeline(natural: string): Promise<PipelineResult> {
+  // Let AI infer dependency type from natural language
+  const results = await searchPreferredSources(buildQuery(natural), natural);
 
   const llmPrompt = [
-    'Given these candidate sources, choose the canonical identifier and primary URL.',
+    'Given these candidate sources, choose the canonical identifier, primary URL, source type, confidence, and dependency type.',
     'Respond with a single JSON object with fields:',
-    '{ "canonicalIdentifier": string|null, "repositoryUrl": string|null, "sourceType": "github|npm|url|unknown", "confidence": "high|medium|low", "searchSummary": string }',
-    '',
+    '{ "canonicalIdentifier": string|null, "repositoryUrl": string|null, "sourceType": "github|npm|url|unknown", "confidence": "high|medium|low", "dependencyType": "framework|api|library|tool|other", "searchSummary": string }',
     `Natural: ${natural}`,
-    `Type: ${dependencyType}`,
     `Candidates: ${JSON.stringify(results, null, 2)}`,
   ].join('\n');
 
   const decision = await runLocalJson<any>({ prompt: llmPrompt });
   if (!decision.success || !decision.json || !validateDiscoveryJson(decision.json)) {
-    return { sourceType: 'unknown', normalizedIdentifier: natural, aiAssisted: true, confidence: 'low' };
+    return { sourceType: 'unknown', normalizedIdentifier: natural, aiAssisted: true, confidence: 'low', dependencyType: 'other' };
   }
 
   const choice = decision.json;
@@ -52,11 +52,12 @@ export async function discoverWithPipeline(natural: string, dependencyType: stri
     aiAssisted: true,
     confidence: choice.confidence,
     searchSummary: choice.searchSummary,
+    dependencyType: choice.dependencyType ?? 'other',
   };
 }
 
-function buildQuery(natural: string, dependencyType: string): string {
-  return `Find official sources for ${dependencyType}: ${natural}. Prefer GitHub repo, Context7, DeepWiki, official docs.`;
+function buildQuery(natural: string): string {
+  return `Find official sources for: ${natural}. Prefer GitHub repo, Context7, DeepWiki, official docs.`;
 }
 
 

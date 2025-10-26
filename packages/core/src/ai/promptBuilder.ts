@@ -52,7 +52,8 @@ export function buildGatewayGenerationPrompt(params: PromptParams): PromptBuildR
   }
 
   // Build structured prompt
-  const prompt = `You are a technical documentation specialist. Generate concise gateway documentation content.
+  const prompt = `You are a JSON-only API. Respond ONLY with valid JSON. No prose, no explanations, no markdown.
+You are a technical documentation specialist. Generate concise gateway documentation content.
 
 DEPENDENCY: ${params.dependencyName}
 TYPE: ${params.dependencyType}
@@ -65,7 +66,7 @@ TASK: Generate ONLY the following content (do not include markdown headers):
 5. FEATURE_4: Fourth key capability (one line)
 6. FEATURE_5: Fifth key capability (one line)
 
-CRITICAL: You MUST respond with ONLY valid JSON. Do not include any explanatory text, markdown formatting, or conversational responses.
+CRITICAL: Respond with ONLY valid JSON—no explanations, no markdown, no extra text.
 
 OUTPUT FORMAT (JSON):
 {
@@ -76,7 +77,7 @@ OUTPUT FORMAT (JSON):
 SOURCE DOCUMENTATION:
 ${documentation}
 
-Remember: Respond with ONLY the JSON object above. No other text.`;
+CRITICAL: Your entire response must be a single JSON object. Do not include any text before or after the JSON.`;
 
   // Rough token estimate (4 chars ≈ 1 token)
   const estimatedTokens = Math.ceil(prompt.length / 4);
@@ -90,46 +91,61 @@ Remember: Respond with ONLY the JSON object above. No other text.`;
   };
 }
 
-/**
- * Parse AI response and extract structured content
- */
-export function parseAiResponse(response: string): AiGeneratedContent {
-  // Try to extract JSON from response (handle markdown code blocks)
+const extractJsonPayload = (response: string): any => {
   let jsonContent = response.trim();
 
-  // Remove markdown code block if present
   const codeBlockMatch = jsonContent.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch) {
     jsonContent = codeBlockMatch[1].trim();
   }
 
-  // Parse JSON
-  let parsed: any;
   try {
-    parsed = JSON.parse(jsonContent);
+    return JSON.parse(jsonContent);
   } catch (error) {
     throw new Error(`Failed to parse AI response as JSON: ${error instanceof Error ? error.message : String(error)}`);
   }
+};
 
-  // Validate structure
-  if (!parsed.shortDescription || typeof parsed.shortDescription !== 'string') {
+const ensureShortDescription = (payload: any): string => {
+  if (!payload?.shortDescription || typeof payload.shortDescription !== 'string') {
     throw new Error('AI response missing or invalid shortDescription field');
   }
+  return payload.shortDescription;
+};
 
-  if (!Array.isArray(parsed.features) || parsed.features.length < 1 || parsed.features.length > 10) {
-    throw new Error(`AI response must include 1-10 features, got ${parsed.features?.length || 0}`);
+const ensureFeatures = (payload: any): string[] => {
+  if (!Array.isArray(payload?.features) || payload.features.length < 1 || payload.features.length > 10) {
+    throw new Error(`AI response must include 1-10 features, got ${payload.features?.length || 0}`);
   }
 
-  // Validate all features are strings
-  for (let i = 0; i < parsed.features.length; i++) {
-    if (typeof parsed.features[i] !== 'string') {
-      throw new Error(`Feature ${i + 1} must be a string`);
+  payload.features.forEach((feature: unknown, index: number) => {
+    if (typeof feature !== 'string') {
+      throw new Error(`Feature ${index + 1} must be a string`);
     }
-  }
+  });
+
+  return payload.features;
+};
+
+/**
+ * Extract the short description from an AI response without strict feature validation
+ */
+export function extractShortDescription(response: string): string {
+  const payload = extractJsonPayload(response);
+  return ensureShortDescription(payload);
+}
+
+/**
+ * Parse AI response and extract structured content
+ */
+export function parseAiResponse(response: string): AiGeneratedContent {
+  const payload = extractJsonPayload(response);
+  const shortDescription = ensureShortDescription(payload);
+  const features = ensureFeatures(payload);
 
   return {
-    shortDescription: parsed.shortDescription,
-    features: parsed.features,
+    shortDescription,
+    features,
   };
 }
 
