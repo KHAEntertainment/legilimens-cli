@@ -7,8 +7,8 @@
     "legilimens": "dist/bin/legilimens.js"
   },
   "scripts": {
-    "start": "tsx bin/legilimens.ts",
-    "dev": "tsx watch bin/legilimens.ts",
+    "start": "bash scripts/run-cli.sh",
+    "dev": "bash scripts/run-cli.sh",
     "build": "tsc -p tsconfig.json",
     "build-assets": "node scripts/build-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
