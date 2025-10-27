@@ -9,15 +9,31 @@ export interface SearchResultItem {
   sourceHint?: 'github' | 'context7' | 'deepwiki' | 'official' | 'other';
 }
 
-export async function searchPreferredSources(query: string, dependencyType: string): Promise<SearchResultItem[]> {
+export interface SearchResult {
+  items: SearchResultItem[];
+  tavilyAnswer?: string;
+  suggestedIdentifier?: string;
+}
+
+/**
+ * Search for documentation sources using Tavily
+ * Uses domain filtering and developer-focused language for best results
+ */
+export async function searchPreferredSources(query: string, dependencyName: string): Promise<SearchResult> {
   const rc = getRuntimeConfig();
   if (!rc.tavily?.enabled || !rc.tavily.apiKey) {
-    return [];
+    return { items: [] };
   }
 
   const client = tavily({ apiKey: rc.tavily.apiKey });
-  const response = await client.search(query, {
-    includeAnswer: 'basic',
+  
+  // Strategy: Developer-focused prompt + domain filtering
+  // Based on testing: this gives highest relevance scores and best GitHub detection
+  const searchQuery = `${dependencyName} official GitHub repository and developer documentation`;
+  
+  const response = await client.search(searchQuery, {
+    includeAnswer: 'basic',  // Tavily extracts GitHub URLs for us!
+    include_domains: ['github.com', 'context7.com'],  // Force relevant sources
     maxResults: rc.tavily.maxResults ?? 5,
     timeout: rc.tavily.timeoutMs ?? 15000,
   } as any);
@@ -30,6 +46,9 @@ export async function searchPreferredSources(query: string, dependencyType: stri
     sourceHint: classifyUrl(r.url),
   }));
 
+  // Extract GitHub owner/repo from Tavily's answer if available
+  const suggestedIdentifier = extractGitHubIdentifier(response.answer);
+
   // rank preference: github → context7 → deepwiki → official docs → other
   const weight = (s?: SearchResultItem['sourceHint']) => {
     switch (s) {
@@ -41,7 +60,29 @@ export async function searchPreferredSources(query: string, dependencyType: stri
     }
   };
 
-  return items.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
+  const sortedItems = items.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
+
+  return {
+    items: sortedItems,
+    tavilyAnswer: response.answer,
+    suggestedIdentifier
+  };
+}
+
+/**
+ * Extract GitHub owner/repo identifier from text
+ */
+function extractGitHubIdentifier(text?: string): string | undefined {
+  if (!text) return undefined;
+  
+  // Match github.com/owner/repo patterns
+  const match = text.match(/github\.com\/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+)/i);
+  if (match) {
+    // Clean up the identifier (remove trailing slashes, .git, etc.)
+    return match[1].replace(/\.git$/, '').replace(/\/$/, '');
+  }
+  
+  return undefined;
 }
 
 function classifyUrl(url: string): SearchResultItem['sourceHint'] {

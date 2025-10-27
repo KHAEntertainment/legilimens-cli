@@ -2,14 +2,17 @@ import { spawn } from 'child_process';
 import { homedir } from 'os';
 import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import type { z } from 'zod';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
+import { validateWithSchema, getSchemaPromptHint } from './schemas.js';
 
-export interface LlmRunOptions {
+export interface LlmRunOptions<T = unknown> {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
   timeoutMs?: number;
+  schema?: z.ZodSchema<T>;  // Optional Zod schema for validation
 }
 
 export interface LlmRunResult<T = unknown> {
@@ -21,7 +24,7 @@ export interface LlmRunResult<T = unknown> {
   durationMs: number;
 }
 
-export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature, timeoutMs }: LlmRunOptions): Promise<LlmRunResult<T>> {
+export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature, timeoutMs, schema }: LlmRunOptions<T>): Promise<LlmRunResult<T>> {
   const start = Date.now();
   const rc = getRuntimeConfig();
   if (!rc.localLlm || rc.localLlm.enabled !== true) {
@@ -57,8 +60,15 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
   const tempDir = join(homedir(), '.legilimens', 'temp');
   const unique = `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
   const file = join(tempDir, `llama-prompt-${unique}.txt`);
-  // Enforce JSON-only output via stronger wrapper
-  const wrapped = `You MUST respond with ONLY a valid JSON object. No explanations, no prose, no markdown - just pure JSON.\n\n${prompt}`;
+  
+  // Enforce JSON-only output with optional schema hint
+  let wrapped = `You MUST respond with ONLY a valid JSON object. No explanations, no prose, no markdown - just pure JSON.\n\n`;
+  
+  if (schema) {
+    wrapped += `The JSON must match this schema:\n${getSchemaPromptHint(schema)}\n\n`;
+  }
+  
+  wrapped += prompt;
 
   const args: string[] = [
     '-m', model,
@@ -158,11 +168,29 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
 
       const jsonText = extractFirstJson(stdout) ?? extractFirstJson(stderr) ?? '';
       const parsed = jsonText ? safeParseJson<T>(jsonText) : null;
+      
       if (parsed) {
-        if (process.env.LEGILIMENS_DEBUG) {
-          console.debug(`[localLlm] Successfully extracted and parsed JSON`);
+        // If schema provided, validate against it
+        if (schema) {
+          const validation = validateWithSchema(schema, parsed);
+          if (validation.success) {
+            if (process.env.LEGILIMENS_DEBUG) {
+              console.debug(`[localLlm] Successfully extracted, parsed, and validated JSON against schema`);
+            }
+            settle({ success: true, raw: stdout, json: validation.data, attempts: 1, durationMs: Date.now() - start });
+          } else {
+            if (process.env.LEGILIMENS_DEBUG) {
+              console.debug(`[localLlm] JSON parsed but schema validation failed: ${validation.error}`);
+            }
+            settle({ success: false, raw: stdout, error: `Schema validation failed: ${validation.error}`, attempts: 1, durationMs: Date.now() - start });
+          }
+        } else {
+          // No schema, just use parsed JSON
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug(`[localLlm] Successfully extracted and parsed JSON`);
+          }
+          settle({ success: true, raw: stdout, json: parsed, attempts: 1, durationMs: Date.now() - start });
         }
-        settle({ success: true, raw: stdout, json: parsed, attempts: 1, durationMs: Date.now() - start });
       } else {
         const preview = (stdout || stderr).slice(0, 500);
         if (process.env.LEGILIMENS_DEBUG) {
