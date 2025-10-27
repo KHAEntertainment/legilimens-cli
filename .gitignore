@@ -1,0 +1,23 @@
+# Node & pnpm artifacts
+node_modules/
+.pnpm-store/
+dist/
+
+# Tooling caches
+.codex/
+.opencode/
+
+# Environment files
+.npmrc
+.DS_Store
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Workspace outputs
+coverage/
+*.tsbuildinfo
+*.log
