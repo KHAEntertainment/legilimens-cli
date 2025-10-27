@@ -1,6 +1,6 @@
 import { spawn } from 'child_process';
-import { tmpdir } from 'os';
-import { writeFileSync, unlinkSync } from 'fs';
+import { homedir } from 'os';
+import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join } from 'path';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
@@ -53,7 +53,10 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
   }
 
-  const file = join(tmpdir(), `llama-prompt-${Date.now()}.txt`);
+  // Use ~/.legilimens/temp/ instead of system tmpdir to avoid permission issues
+  const tempDir = join(homedir(), '.legilimens', 'temp');
+  const unique = `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
+  const file = join(tempDir, `llama-prompt-${unique}.txt`);
   // Enforce JSON-only output via stronger wrapper
   const wrapped = `You MUST respond with ONLY a valid JSON object. No explanations, no prose, no markdown - just pure JSON.\n\n${prompt}`;
 
@@ -71,9 +74,18 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     let timedOut = false;
     let settled = false;
     let didCleanup = false;
+    let to: NodeJS.Timeout | undefined;
 
-    const writePromptFile = () => {
-      writeFileSync(file, wrapped, 'utf8');
+    const writePromptFile = (): boolean => {
+      try {
+        // Ensure temp directory exists before writing
+        mkdirSync(tempDir, { recursive: true });
+        writeFileSync(file, wrapped, 'utf8');
+        return true;
+      } catch (error) {
+        settle({ success: false, raw: '', error: 'Failed to write temporary LLM prompt file: ' + (error instanceof Error ? error.message : String(error)), attempts: 1, durationMs: Date.now() - start });
+        return false;
+      }
     };
 
     const cleanup = () => {
@@ -89,14 +101,16 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     const settle = (result: LlmRunResult<T>) => {
       if (settled) return;
       settled = true;
-      clearTimeout(to);
+      if (to) clearTimeout(to);
       cleanup();
       resolve(result);
     };
 
-    writePromptFile();
+    const writeSuccess = writePromptFile();
+    if (!writeSuccess || settled) return;
+
     const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
-    const to = setTimeout(() => {
+    to = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
     }, timeoutMs ?? (rc.localLlm?.timeoutMs ?? 30000));

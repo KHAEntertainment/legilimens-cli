@@ -1,4 +1,4 @@
-import { intro, outro, text, select, spinner, note, confirm, cancel } from '@clack/prompts';
+import { intro, outro, text, spinner, note, confirm, cancel } from '@clack/prompts';
 import {
   generateGatewayDoc,
   detectSourceTypeWithAI,
@@ -6,10 +6,7 @@ import {
   isLocalLlmEnabled
 } from '@legilimens/core';
 import type { GatewayGenerationRequest } from '@legilimens/core';
-import { join } from 'path';
-import { existsSync } from 'fs';
 import { loadUserConfig, isSetupRequired } from '../config/userConfig.js';
-import { loadAsciiBanner, bannerToString } from '../assets/asciiBanner.js';
 
 export interface ClackFlowResult {
   success: boolean;
@@ -18,16 +15,41 @@ export interface ClackFlowResult {
 }
 
 export async function runClackGenerationFlow(templatePath: string, targetDirectory: string): Promise<ClackFlowResult> {
-  const termWidth = typeof process?.stdout?.columns === 'number' ? process.stdout.columns : 100;
-  const banner = loadAsciiBanner({ minimal: false, width: termWidth });
-  console.log(bannerToString(banner));
+  if (process.env.LEGILIMENS_DEBUG) {
+    console.log('[DEBUG] Generation flow started');
+    console.log('[DEBUG] Template path:', templatePath);
+    console.log('[DEBUG] Target directory:', targetDirectory);
+  }
 
+  if (process.env.LEGILIMENS_DEBUG) {
+    console.log('[DEBUG] Showing intro...');
+  }
   intro('🪄 Reading the minds of repositories');
 
   try {
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Loading user config...');
+    }
     const userConfig = loadUserConfig();
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] User config loaded:', JSON.stringify(userConfig, null, 2));
+    }
+    
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Getting runtime config...');
+    }
     const runtimeConfig = getRuntimeConfig();
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Runtime config loaded');
+    }
+    
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Checking if setup required...');
+    }
     const setupRequired = await isSetupRequired();
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Setup required:', setupRequired);
+    }
 
     // Pre-flight check: Enforce at least one AI provider before proceeding
     const tavilyPresent = Boolean(process.env.TAVILY_API_KEY || userConfig.apiKeys.tavily);
@@ -38,14 +60,17 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       return { success: false, error: 'No AI provider configured' };
     }
 
-    if (!isLocalLlmEnabled(runtimeConfig) && !tavilyPresent) {
-      note('Local LLM not configured and Tavily API key not present.\n\nRun \'legilimens setup\' to configure', 'Configuration Warning');
+    if (!isLocalLlmEnabled(runtimeConfig) && tavilyPresent) {
+      note('Local LLM not configured and will be skipped.\n\nRun \'legilimens setup\' to configure', 'Configuration Warning');
     }
 
     // Step 1: Dependency identifier (natural language or canonical)
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Prompting for dependency identifier...');
+    }
     const identifier = await text({
-      message: 'Enter dependency identifier',
-      placeholder: 'e.g., "Jumpcloud API 2.0", "React", or "vercel/ai"',
+      message: 'What do you need documentation on?',
+      placeholder: 'e.g., "AG-UI", "React", "vercel/ai", "https://github.com/org/repo"',
       validate: (value) => {
         if (!value || value.trim().length === 0) {
           return 'Dependency identifier cannot be empty';
@@ -53,7 +78,15 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       },
     });
 
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Identifier received:', identifier);
+      console.log('[DEBUG] Identifier type:', typeof identifier);
+    }
+
     if (typeof identifier === 'symbol') {
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.log('[DEBUG] User cancelled at identifier prompt');
+      }
       cancel('Operation cancelled');
       return { success: false };
     }
@@ -62,11 +95,18 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
     const s = spinner();
     s.start('Detecting dependency source and type with AI');
 
-    const detection = await detectSourceTypeWithAI(String(identifier));
-    const sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
-    const dependencyType = detection.dependencyType || 'other';
-
-    s.stop(`Source detected: ${detection.sourceType}, Type: ${dependencyType}${sourceHint}`);
+    let detection;
+    let sourceHint;
+    let dependencyType;
+    try {
+      detection = await detectSourceTypeWithAI(String(identifier));
+      sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
+      dependencyType = detection.dependencyType || 'other';
+      s.stop(`Source detected: ${detection.sourceType}, Type: ${dependencyType}${sourceHint}`);
+    } catch (error) {
+      s.stop('Detection failed');
+      throw error;
+    }
 
     // Step 3: Minimal mode
     const minimalMode = await confirm({
@@ -133,6 +173,17 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
     return { success: true, artifacts: result.artifacts };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
+    
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.log('[DEBUG] Error caught in generation flow:');
+      console.log('[DEBUG] Error type:', error instanceof Error ? 'Error' : typeof error);
+      console.log('[DEBUG] Error message:', msg);
+      if (error instanceof Error && error.stack) {
+        console.log('[DEBUG] Stack trace:');
+        console.log(error.stack);
+      }
+    }
+    
     cancel(`Generation failed: ${msg}`);
     return { success: false, error: msg };
   }

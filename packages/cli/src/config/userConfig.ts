@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'f
 import type { CliToolName } from '@legilimens/core';
 import type { RuntimeConfig } from '@legilimens/core';
 import { saveApiKey, getApiKey, isKeychainAvailable, areKeysConfigured, validateStoredKeys, createStorageErrorMessage } from './secrets.js';
-import { getLlamaPaths } from '../utils/llamaInstaller.js';
+import { detectExistingInstallation } from '../utils/llamaInstaller.js';
 
 export interface UserConfig {
   apiKeys: {
@@ -15,6 +15,11 @@ export interface UserConfig {
   };
   aiCliTool?: CliToolName | 'auto-detect';
   aiCliCommandOverride?: string;
+  localLlm?: {
+    enabled: boolean;
+    binaryPath?: string;
+    modelPath?: string;
+  };
   setupCompleted: boolean;
   configVersion: string;
   apiKeysStoredInKeychain?: boolean;
@@ -68,6 +73,7 @@ export const loadUserConfig = (): UserConfig => {
       apiKeys: config.apiKeys ?? {},
       aiCliTool: config.aiCliTool,
       aiCliCommandOverride: config.aiCliCommandOverride,
+      localLlm: config.localLlm,
       setupCompleted: config.setupCompleted ?? false,
       configVersion: config.configVersion ?? CONFIG_VERSION,
       apiKeysStoredInKeychain: config.apiKeysStoredInKeychain ?? false
@@ -76,6 +82,7 @@ export const loadUserConfig = (): UserConfig => {
     console.warn('Failed to load user config, using defaults:', error);
     return {
       apiKeys: {},
+      localLlm: undefined,
       setupCompleted: false,
       configVersion: CONFIG_VERSION,
       apiKeysStoredInKeychain: false
@@ -137,10 +144,11 @@ export const saveUserConfig = async (config: UserConfig): Promise<{ success: boo
       }
     }
 
-    // Prepare config without API keys for JSON storage
+    // Prepare config without API keys for JSON storage (but keep localLlm)
     const { apiKeys: _apiKeys, ...configWithoutKeys } = config; // eslint-disable-line @typescript-eslint/no-unused-vars
     const configWithMeta = {
       ...configWithoutKeys,
+      localLlm: config.localLlm, // Persist local LLM paths
       configVersion: CONFIG_VERSION,
       apiKeysStoredInKeychain: isKeychainAvailable(),
       _warning: hasApiKeys 
@@ -202,6 +210,28 @@ export const mergeWithEnvVars = async (
     apiKeys.refTools = await getApiKey('refTools') ?? userConfig.apiKeys.refTools;
   }
 
+  // If env vars not set, populate from userConfig.localLlm
+  const localLlmEnabled = env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' || 
+                          (userConfig.localLlm?.enabled && !env.LEGILIMENS_LOCAL_LLM_ENABLED);
+  const localLlmBin = env.LEGILIMENS_LOCAL_LLM_BIN || userConfig.localLlm?.binaryPath;
+  const localLlmModel = env.LEGILIMENS_LOCAL_LLM_MODEL || userConfig.localLlm?.modelPath;
+
+  // Set env vars from config if not already set (for getRuntimeConfig to pick up)
+  if (!env.LEGILIMENS_LOCAL_LLM_ENABLED && userConfig.localLlm?.enabled) {
+    env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
+  }
+  if (!env.LEGILIMENS_LOCAL_LLM_BIN && userConfig.localLlm?.binaryPath) {
+    env.LEGILIMENS_LOCAL_LLM_BIN = userConfig.localLlm.binaryPath;
+  }
+  if (!env.LEGILIMENS_LOCAL_LLM_MODEL && userConfig.localLlm?.modelPath) {
+    env.LEGILIMENS_LOCAL_LLM_MODEL = userConfig.localLlm.modelPath;
+  }
+  
+  // Auto-enable Tavily if API key exists and not explicitly disabled
+  if (!env.TAVILY_ENABLED && apiKeys.tavily) {
+    env.TAVILY_ENABLED = 'true';
+  }
+
   return {
     apiKeys: apiKeys as any,
     aiCliConfig: {
@@ -216,9 +246,9 @@ export const mergeWithEnvVars = async (
       commandOverride: env.LEGILIMENS_AI_CLI_COMMAND_OVERRIDE ?? userConfig.aiCliCommandOverride
     },
     localLlm: {
-      enabled: env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true',
-      binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
-      modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,
+      enabled: Boolean(localLlmEnabled),
+      binaryPath: localLlmBin,
+      modelPath: localLlmModel,
       tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
       threads: env.LEGILIMENS_LOCAL_LLM_THREADS ? parseInt(env.LEGILIMENS_LOCAL_LLM_THREADS, 10) : undefined,
       temp: env.LEGILIMENS_LOCAL_LLM_TEMP ? parseFloat(env.LEGILIMENS_LOCAL_LLM_TEMP) : undefined,
@@ -271,12 +301,21 @@ export const isSetupRequired = async (env: NodeJS.ProcessEnv = process.env): Pro
     existsSync(envBinPath) &&
     existsSync(envModelPath);
 
-  // Check for existing llama.cpp installation in ~/.legilimens
-  const paths = getLlamaPaths();
-  const localLlmInstalled = existsSync(paths.binaryPath) && existsSync(paths.modelPath);
+  // Check for existing llama.cpp installation using robust detection
+  const existingInstall = await detectExistingInstallation();
+  const localLlmInstalled = existingInstall.found && 
+                            Boolean(existingInstall.binaryPath) && 
+                            Boolean(existingInstall.modelPath) &&
+                            existingInstall.binaryPath !== undefined &&
+                            existingInstall.modelPath !== undefined &&
+                            existsSync(existingInstall.binaryPath) &&
+                            existsSync(existingInstall.modelPath);
 
   if (process.env.LEGILIMENS_DEBUG) {
     console.debug(`[isSetupRequired] setupCompleted=${userConfig.setupCompleted}, tavilyKeyRetrievable=${tavilyKeyRetrievable}, localLlmEnvConfigured=${localLlmEnvConfigured}, localLlmInstalled=${localLlmInstalled}`);
+    if (localLlmInstalled) {
+      console.debug(`[isSetupRequired] Found local LLM: binary=${existingInstall.binaryPath}, model=${existingInstall.modelPath}`);
+    }
   }
 
   // Skip setup only if (Tavily OR Local LLM) is configured AND retrievable
@@ -290,7 +329,7 @@ export const isSetupRequired = async (env: NodeJS.ProcessEnv = process.env): Pro
     return false;
   }
 
-  // 3. Local LLM is installed in ~/.legilimens (Tavily key not required if Local LLM present)
+  // 3. Local LLM is installed and detected (Tavily key not required if Local LLM present)
   if (localLlmInstalled) {
     return false;
   }

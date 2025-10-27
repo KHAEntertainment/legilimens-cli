@@ -49,8 +49,8 @@ export const loadCliEnvironment = async (
   const mergedConfig = await mergeWithEnvVars(userConfig, env);
 
   // Determine config source
-  const hasEnvVars = !!(env.FIRECRAWL_API_KEY || env.CONTEXT7_API_KEY || env.REFTOOLS_API_KEY || env.LEGILIMENS_AI_CLI_TOOL);
-  const hasFileConfig = !!(userConfig.apiKeys.firecrawl || userConfig.apiKeys.context7 || userConfig.apiKeys.refTools || userConfig.aiCliTool);
+  const hasEnvVars = !!(env.TAVILY_API_KEY || env.FIRECRAWL_API_KEY || env.CONTEXT7_API_KEY || env.REFTOOLS_API_KEY || env.LEGILIMENS_AI_CLI_TOOL);
+  const hasFileConfig = !!(userConfig.apiKeys.tavily || userConfig.apiKeys.firecrawl || userConfig.apiKeys.context7 || userConfig.apiKeys.refTools || userConfig.aiCliTool);
   const configSource = hasEnvVars && hasFileConfig ? 'mixed' : hasEnvVars ? 'env' : hasFileConfig ? 'file' : 'env';
 
   // Apply merged config to environment before loading runtime config
@@ -58,6 +58,12 @@ export const loadCliEnvironment = async (
     if (mergedConfig.apiKeys.firecrawl) env.FIRECRAWL_API_KEY = mergedConfig.apiKeys.firecrawl;
     if (mergedConfig.apiKeys.context7) env.CONTEXT7_API_KEY = mergedConfig.apiKeys.context7;
     if (mergedConfig.apiKeys.refTools) env.REFTOOLS_API_KEY = mergedConfig.apiKeys.refTools;
+  }
+  
+  // Tavily key needs to be set from mergedConfig since it's not in core ApiKeys interface
+  // mergeWithEnvVars includes tavily in apiKeys object for compatibility
+  if (mergedConfig.apiKeys && 'tavily' in mergedConfig.apiKeys && mergedConfig.apiKeys.tavily) {
+    env.TAVILY_API_KEY = String(mergedConfig.apiKeys.tavily);
   }
   if (mergedConfig.aiCliConfig) {
     if (mergedConfig.aiCliConfig.preferredTool) env.LEGILIMENS_AI_CLI_TOOL = mergedConfig.aiCliConfig.preferredTool;

@@ -113,8 +113,8 @@ export async function runClackWizard(): Promise<WizardResult> {
         installSpinner.stop('phi-4 model ready');
         modelPath = installResult.modelPath;
       }
-    } else if (!configStatus.llamaCppInstalled) {
-      // Install llama.cpp and model
+    } else {
+      // No existing installation detected - install llama.cpp and model
       const installSpinner = spinner();
       installSpinner.start('Installing llama.cpp and phi-4 model');
 
@@ -131,10 +131,30 @@ export async function runClackWizard(): Promise<WizardResult> {
       installSpinner.stop('llama.cpp and phi-4 model ready');
       llamaBin = installResult.binaryPath;
       modelPath = installResult.modelPath;
-    } else {
-      // Use paths from ~/.legilimens
-      llamaBin = paths.binaryPath;
-      modelPath = paths.modelPath;
+    }
+
+    // Validate that we have valid paths before continuing
+    if (!llamaBin || !modelPath) {
+      cancel('Installation completed but paths were not set correctly. Please report this issue.');
+      return { success: false, error: 'Invalid installation state: missing binary or model path' };
+    }
+
+    if (!existsSync(llamaBin)) {
+      cancel(`Binary path does not exist: ${llamaBin}`);
+      return { success: false, error: `Binary not found at expected location: ${llamaBin}` };
+    }
+
+    if (!existsSync(modelPath)) {
+      cancel(`Model path does not exist: ${modelPath}`);
+      return { success: false, error: `Model not found at expected location: ${modelPath}` };
+    }
+
+    // Debug logging
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[wizard] Installation validated - binary: ${llamaBin}, model: ${modelPath}`);
+      console.debug(`[wizard] Binary exists: ${existsSync(llamaBin || '')}`);
+      console.debug(`[wizard] Model exists: ${existsSync(modelPath || '')}`);
+      console.debug(`[wizard] Will save localLlm: ${llamaBin && modelPath ? 'YES' : 'NO'}`);
     }
 
     // API Key prompts with pre-filled values
@@ -215,9 +235,19 @@ export async function runClackWizard(): Promise<WizardResult> {
         context7: context7Key ? String(context7Key) : (existingKeys.context7 || ''),
         refTools: refToolsKey ? String(refToolsKey) : (existingKeys.refTools || '')
       },
+      localLlm: llamaBin && modelPath ? {
+        enabled: true,
+        binaryPath: llamaBin,
+        modelPath: modelPath
+      } : current.localLlm,
       setupCompleted: true,
       configVersion: current.configVersion || '1.0.0'
     };
+
+    // Debug logging
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[wizard] Saving config with localLlm: ${JSON.stringify(cfg.localLlm, null, 2)}`);
+    }
 
     const saveSpinner = spinner();
     saveSpinner.start('Saving configuration');
@@ -244,14 +274,12 @@ export async function runClackWizard(): Promise<WizardResult> {
     saveSpinner.stop(`Configuration saved to ~/.legilimens/config.json\nAPI keys stored securely in ${getStorageMethod()}`);
 
     // Export relevant env for this session (only if non-empty values were entered)
-    process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
-    if (llamaBin) {
+    if (llamaBin && modelPath) {
+      process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
       process.env.LEGILIMENS_LOCAL_LLM_BIN = String(llamaBin);
-    }
-    if (modelPath) {
       process.env.LEGILIMENS_LOCAL_LLM_MODEL = expandTilde(String(modelPath));
     }
-    process.env.TAVILY_ENABLED = 'true';
+    // Tavily is auto-enabled in runtimeConfig when API key exists
     if (tavilyKey && String(tavilyKey).trim()) {
       process.env.TAVILY_API_KEY = String(tavilyKey).trim();
     }
@@ -266,22 +294,42 @@ export async function runClackWizard(): Promise<WizardResult> {
     }
 
     const missingVars: string[] = [];
-    if (process.env.LEGILIMENS_LOCAL_LLM_ENABLED !== 'true') {
-      missingVars.push('LEGILIMENS_LOCAL_LLM_ENABLED');
-    }
-    const resolvedBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
-    if (!resolvedBin || !existsSync(resolvedBin)) {
-      missingVars.push('LEGILIMENS_LOCAL_LLM_BIN');
-    }
-    const resolvedModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
-    if (!resolvedModel || !existsSync(resolvedModel)) {
-      missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL');
-    }
-    if (process.env.TAVILY_ENABLED !== 'true') {
-      missingVars.push('TAVILY_ENABLED');
-    }
-    if (!process.env.TAVILY_API_KEY) {
-      missingVars.push('TAVILY_API_KEY');
+    
+    // Check if at least one AI source is configured (Local LLM OR Tavily)
+    const hasLocalLlm = process.env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' &&
+                        process.env.LEGILIMENS_LOCAL_LLM_BIN &&
+                        process.env.LEGILIMENS_LOCAL_LLM_MODEL &&
+                        existsSync(process.env.LEGILIMENS_LOCAL_LLM_BIN) &&
+                        existsSync(process.env.LEGILIMENS_LOCAL_LLM_MODEL);
+    
+    const hasTavily = Boolean(process.env.TAVILY_API_KEY);
+    
+    if (!hasLocalLlm && !hasTavily) {
+      // Neither is configured - check what's missing
+      if (process.env.LEGILIMENS_LOCAL_LLM_ENABLED !== 'true') {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_ENABLED');
+      }
+      const resolvedBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
+      if (!resolvedBin || !existsSync(resolvedBin)) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_BIN');
+      }
+      const resolvedModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
+      if (!resolvedModel || !existsSync(resolvedModel)) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL');
+      }
+      if (!process.env.TAVILY_API_KEY) {
+        missingVars.push('TAVILY_API_KEY');
+      }
+    } else if (hasLocalLlm && !hasTavily) {
+      // Local LLM configured but not Tavily - this is OK, but validate Local LLM
+      const resolvedBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
+      if (!resolvedBin || !existsSync(resolvedBin)) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_BIN');
+      }
+      const resolvedModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
+      if (!resolvedModel || !existsSync(resolvedModel)) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL');
+      }
     }
 
     if (missingVars.length > 0) {

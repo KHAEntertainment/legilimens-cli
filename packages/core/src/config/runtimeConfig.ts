@@ -142,8 +142,13 @@ export const getRuntimeConfig = (
     resetBetweenTasks: (env.LEGILIMENS_LOCAL_LLM_RESET ?? 'true').toLowerCase() === 'true',
   };
 
+  // Auto-enable Tavily if API key exists and TAVILY_ENABLED is not explicitly set
+  const tavilyEnabled = env.TAVILY_ENABLED 
+    ? env.TAVILY_ENABLED.toLowerCase() === 'true'
+    : Boolean(env.TAVILY_API_KEY); // Auto-enable if key exists
+  
   const tavily: TavilyConfig = {
-    enabled: (env.TAVILY_ENABLED ?? 'false').toLowerCase() === 'true',
+    enabled: tavilyEnabled,
     apiKey: env.TAVILY_API_KEY,
     timeoutMs: env.TAVILY_TIMEOUT_MS ? Number.parseInt(env.TAVILY_TIMEOUT_MS, 10) : undefined,
     maxResults: env.TAVILY_MAX_RESULTS ? Number.parseInt(env.TAVILY_MAX_RESULTS, 10) : undefined,
