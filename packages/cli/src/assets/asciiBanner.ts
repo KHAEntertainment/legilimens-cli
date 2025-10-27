@@ -1,6 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import figlet from 'figlet';
+import gradient from 'gradient-string';
+import chalk from 'chalk';
 
 export type BannerSource = 'external' | 'figlet' | 'fallback';
 
@@ -185,4 +187,15 @@ export const loadAsciiBanner = (options: BannerOptions = {}): BannerResult => {
   };
 };
 
-export const bannerToString = (banner: BannerResult): string => banner.lines.join('\n');
+export const bannerToString = (banner: BannerResult, applyColors: boolean = true): string => {
+  const text = banner.lines.join('\n');
+  
+  // Apply gradient if colors are enabled
+  if (applyColors && !process.env.NO_COLOR) {
+    // Legilimens brand gradient: purple → cyan → teal
+    const brandGradient = gradient(['#7F5AF0', '#2CB1BC', '#22D3EE']);
+    return brandGradient(text);
+  }
+  
+  return text;
+};

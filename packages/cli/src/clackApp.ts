@@ -110,7 +110,7 @@ export async function runClackApp(): Promise<void> {
 
       const config = loadUserConfig();
 
-      // Display ASCII banner
+      // Display ASCII banner with colors
       try {
         const bannerPath = join(__dirname, 'assets', 'banner.txt');
         const banner = loadAsciiBanner({
@@ -119,16 +119,18 @@ export async function runClackApp(): Promise<void> {
           width: 80
         });
 
-        // Show the banner as a note (with box) or plain text
+        // Show the banner with gradient colors
         if (banner.source === 'external' || banner.source === 'figlet') {
-          console.log('\n' + bannerToString(banner) + '\n');
+          console.log('\n' + bannerToString(banner, true) + '\n');
         } else {
-          // Fallback: just show intro
-          intro('Legilimens');
+          // Fallback: show intro with gradient
+          const brandIntro = chalk.hex('#7F5AF0')('Legilimens');
+          intro(brandIntro);
         }
       } catch {
-        // If banner fails, fall back to simple intro
-        intro('Legilimens');
+        // If banner fails, fall back to colored intro
+        const brandIntro = chalk.hex('#7F5AF0')('Legilimens');
+        intro(brandIntro);
       }
 
       const action = await select({
