@@ -1,0 +1,27 @@
+#!/bin/bash
+
+echo "=== Terminal Diagnostics ==="
+echo ""
+echo "Environment:"
+echo "  TERM: $TERM"
+echo "  COLORTERM: $COLORTERM"
+echo "  Shell: $SHELL"
+echo "  tput colors: $(tput colors 2>/dev/null || echo 'N/A')"
+echo ""
+
+echo "Testing ANSI codes with /usr/bin/printf:"
+/usr/bin/printf "  \033[31mRED\033[0m \033[32mGREEN\033[0m \033[34mBLUE\033[0m\n"
+echo ""
+
+echo "If you see colored text above (RED in red, GREEN in green, BLUE in blue),"
+echo "then your terminal DOES support colors."
+echo ""
+echo "If you see [31mRED[0m type codes, your Terminal.app has ANSI disabled."
+echo ""
+echo "To fix in Terminal.app:"
+echo "1. Terminal → Preferences (Cmd+,)"
+echo "2. Profiles tab"
+echo "3. Select your profile"
+echo "4. Advanced tab" 
+echo "5. Check 'Declare terminal as:' is set to 'xterm-256color' or similar"
+echo ""

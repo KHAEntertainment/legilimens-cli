@@ -10,6 +10,7 @@ import { join, dirname } from 'path';
 import { existsSync, writeFileSync, mkdirSync } from 'fs';
 import { homedir } from 'os';
 import { fileURLToPath } from 'url';
+import chalk from 'chalk';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,8 +18,11 @@ const __dirname = dirname(__filename);
 export async function runClackApp(): Promise<void> {
   // Enable color support for Clack prompts
   // Force colors in TTY environments (unless NO_COLOR is set)
-  if (process.stdout.isTTY && !process.env.NO_COLOR) {
+  if (!process.env.NO_COLOR) {
     process.env.FORCE_COLOR = process.env.FORCE_COLOR || '3';
+    // Explicitly set chalk level to 3 (TrueColor) to override auto-detection
+    // This is necessary because TTY detection can fail in some contexts
+    chalk.level = 3;
   }
   
   // Load CLI environment (populates env vars from saved config)

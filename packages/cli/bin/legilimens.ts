@@ -1,5 +1,12 @@
 #!/usr/bin/env node
 
+// CRITICAL: Force color support BEFORE any imports
+// This ensures picocolors (used by @clack/prompts) detects color support
+// Must be set before any module that checks color support is loaded
+if (!process.env.NO_COLOR && !process.env.FORCE_COLOR) {
+  process.env.FORCE_COLOR = '3'; // Enable TrueColor support
+}
+
 import { readFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
