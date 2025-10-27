@@ -52,7 +52,13 @@ void (async () => {
     await runClackApp();
   } catch (error) {
     if (error instanceof Error) {
-      console.error(`Error: ${error.message}`);
+      console.error(`\nError: ${error.message}`);
+      
+      // Show stack trace in debug mode
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.error('\nStack trace:');
+        console.error(error.stack);
+      }
 
       // Provide helpful message for Node.js version errors
       if (error.message.includes('requires Node.js')) {

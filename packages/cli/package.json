@@ -9,7 +9,7 @@
   "scripts": {
     "start": "bash scripts/run-cli.sh",
     "dev": "bash scripts/run-cli.sh",
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node scripts/build-assets.mjs",
     "build-assets": "node scripts/build-assets.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",

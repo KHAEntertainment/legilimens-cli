@@ -117,6 +117,42 @@ API keys are stored using a three-tier fallback system:
 
 Implementation: `packages/cli/src/config/secrets.ts`
 
+### CLI Configuration System
+
+The CLI uses a three-layer configuration architecture that combines persistent storage, secure credentials, and runtime environment variables:
+
+**Configuration Flow:**
+1. **Persistent Config** (`~/.legilimens/config.json`): Stores user preferences, setup state, and local LLM paths
+2. **Secure Storage**: API keys stored in system keychain or encrypted file
+3. **Environment Variables**: Runtime population from both sources via `loadCliEnvironment()`
+
+**Setup Wizard Detection:**
+The wizard runs when `isSetupRequired()` returns true, which checks:
+- `setupCompleted` flag in config.json
+- Presence of at least one AI provider (Local LLM or API keys)
+- Valid local LLM installation (binary + model paths)
+
+**Local LLM Integration:**
+- Binary and model paths stored in `config.localLlm` section
+- Recursive search for llama.cpp installation in `~/.legilimens/bin/`
+- Automatic detection prevents duplicate downloads
+- Timer initialization fixed to prevent crashes on first run
+
+**Environment Loading Sequence:**
+1. CLI startup calls `loadCliEnvironment()` before any flows
+2. Loads Tavily/Firecrawl/Context7 keys from secure storage into `process.env`
+3. Populates `LEGILIMENS_LOCAL_LLM_*` variables from config.json
+4. Runtime config auto-enables providers when credentials exist
+
+**Key Files:**
+- `packages/cli/src/config/userConfig.ts` - Configuration persistence and loading
+- `packages/cli/src/config/env.ts` - Environment variable population
+- `packages/cli/src/utils/llamaInstaller.ts` - Local LLM detection and installation
+- `packages/core/src/config/runtimeConfig.ts` - Provider auto-detection logic
+
+**Troubleshooting Reference:**
+See `WORKING_CLI_SETUP.md` for detailed configuration status, common issues, and resolution steps.
+
 ## Manual Notes
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->

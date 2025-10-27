@@ -23,6 +23,18 @@ web adapters can share the same brain.
 - **Telemetry**: Shared performance tracker enforces guardrails and recommends minimal mode when runs stretch.
 - **Doctrine**: DeepWiki remains the canonical knowledge surface; static backups support planning; MCP guidance stays template-driven.
 
+## ✅ Current Status
+
+**CLI Foundation: FULLY FUNCTIONAL** as of commit `99932db`
+
+- ✅ Setup wizard works correctly (no forced re-runs)
+- ✅ AI provider detection working (Local LLM + Tavily)
+- ✅ Configuration persistence across sessions
+- ✅ Binary and model detection robust
+- ✅ Environment loading from secure storage
+
+See [WORKING_CLI_SETUP.md](WORKING_CLI_SETUP.md) for detailed configuration and test results.
+
 ## Quickstart
 
 For a complete walkthrough, see [docs/quickstart.md](docs/quickstart.md).
@@ -42,12 +54,15 @@ Legilimens uses a full-screen TUI (Text User Interface) similar to vim, less, or
 - **Preserves terminal history** using alternate screen buffer
 - **Restores previous terminal state** when you exit
 - **Graceful cleanup** on errors or interrupts (Ctrl+C)
+- **Requires interactive terminal (TTY)** - won't work when output is piped or in CI/CD
 
 To disable this behavior (useful for debugging or scripting):
 ```bash
 export LEGILIMENS_DISABLE_TUI=true
 legilimens
 ```
+
+**Note**: The CLI requires a real terminal (TTY) to run the interactive menu. If you see "TTY initialization failed", make sure you're running directly in your terminal, not through a pipe or non-interactive environment.
 
 ### First Run: Automatic Setup
 

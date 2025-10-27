@@ -16,3 +16,82 @@ Use `@/openspec/AGENTS.md` to learn:
 Keep this managed block so 'openspec update' can refresh the instructions.
 
 <!-- OPENSPEC:END -->
+
+# AI Assistant Quick Start
+
+Welcome! This is a lightweight entry point for AI assistants working on the Legilimens CLI project.
+
+## Primary Reference
+
+**👉 Read `AGENTS.md` first** - it's the comprehensive technical handbook covering:
+- Complete stack and workspace layout
+- Common commands and workflows
+- Testing expectations and governance rules
+- Detailed technical notes on all major subsystems
+
+## Quick Context
+
+**Legilimens** is a CLI tool that generates documentation for dependencies by:
+1. Detecting package repositories (GitHub, NPM, URLs)
+2. Fetching docs via multiple sources (DeepWiki, Context7, Tavily, Firecrawl)
+3. Generating formatted markdown using local LLM or cloud AI
+4. Following strict template and quality standards
+
+**Architecture:**
+- `@legilimens/core` - Business logic (gateway, detection, fetchers)
+- `@legilimens/cli` - Interactive Clack/Ink-based UX
+- `@legilimens/harness-service` - Fastify HTTP service for parity testing
+
+## Common Pitfalls
+
+### Configuration & Setup
+- **Setup Wizard Loop**: If wizard keeps running, check `~/.legilimens/config.json` for `setupCompleted: true` and valid `localLlm` paths
+- **"No AI provider configured"**: Ensure `loadCliEnvironment()` is called before flows run; check API keys in secure storage
+- **Local LLM not found**: Binary lives in nested path `~/.legilimens/bin/build/bin/llama-cli`; recursive search required
+- **Environment Variables**: Don't manually set `TAVILY_API_KEY` etc. - they're loaded from secure storage automatically
+
+### Code Standards
+- **TypeScript Strict Mode**: All packages use strict type checking with ESM modules
+- **pnpm Workspaces**: Always use `--filter` for package-specific commands
+- **Import Paths**: Use `@legilimens/core` imports, not relative paths across packages
+- **Template Compliance**: Documentation output MUST follow `docs/templates/legilimens-template.md` format
+
+### Testing
+- **Parity Tests**: Changes to `@legilimens/core` require green `tests/integration/parity.spec.ts`
+- **Unit Tests**: Prefer `vitest` with `ink-testing-library` for CLI components
+- **No Network in CI**: Harness tests use Fastify inject, not real HTTP
+
+## Governance
+
+The project follows strict governance rules from `.specify/memory/constitution.md`:
+
+- **DeepWiki Doctrine**: All documentation must follow DeepWiki format and quality standards
+- **Performance Guardrails**: Typical runs ≤10s, absolute max 60s with progress indicators
+- **Template Enforcement**: Generated docs must match official template structure
+- **Static Backups**: All generated files need `static-backup/` copies
+
+## Troubleshooting
+
+If you encounter configuration or setup issues, check:
+1. **`WORKING_CLI_SETUP.md`** - Detailed status snapshot and common fixes
+2. **`AGENTS.md` Technical Notes** - Architecture-specific guidance
+3. **`docs/quickstart.md`** - First-time setup walkthrough
+
+## When to Use OpenSpec
+
+Create a proposal via `@/openspec/AGENTS.md` when work involves:
+- Breaking changes or new major features
+- Architecture shifts or performance overhauls
+- Anything requiring cross-package coordination
+- Security or governance-impacting changes
+
+For standard feature work within existing architecture, proceed directly but keep AGENTS.md context loaded.
+
+## Ready to Start
+
+1. Read `AGENTS.md` for comprehensive context
+2. Check `WORKING_CLI_SETUP.md` if debugging CLI issues
+3. Review constitution at `.specify/memory/constitution.md` for quality standards
+4. Run `pnpm install` and launch with `pnpm --filter @legilimens/cli start`
+
+Happy coding! 🚀

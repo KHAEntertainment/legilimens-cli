@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, copyFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import figlet from 'figlet';
@@ -6,7 +6,9 @@ import figlet from 'figlet';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT_DIR = resolve(__dirname, '..', '..', '..');
 const OUTPUT_DIR = resolve(__dirname, '../dist/assets');
+const OUTPUT_TEMPLATES_DIR = resolve(OUTPUT_DIR, 'templates');
 const EXTERNAL_BANNER_PATH = resolve(ROOT_DIR, 'docs/ascii-art.md');
+const TEMPLATE_SOURCE = resolve(__dirname, '../src/assets/templates/legilimens-template.md');
 const MAX_WIDTH = 80;
 const DEFAULT_TEXT = 'Legilimens';
 const DEFAULT_FONT = 'Standard';
@@ -80,6 +82,7 @@ const renderFiglet = () => {
 
 const main = async () => {
   await mkdir(OUTPUT_DIR, { recursive: true });
+  await mkdir(OUTPUT_TEMPLATES_DIR, { recursive: true });
 
   let banner;
   try {
@@ -104,6 +107,16 @@ const main = async () => {
 
   await writeBanner('banner.txt', banner.lines.join('\n'));
   await writeBanner('banner-minimal.txt', minimalLines.join('\n'));
+
+  // Copy template file to dist/assets/templates
+  try {
+    await copyFile(TEMPLATE_SOURCE, resolve(OUTPUT_TEMPLATES_DIR, 'legilimens-template.md'));
+    process.stdout.write('[build-assets] copied template to dist/assets/templates\n');
+  } catch (error) {
+    process.stderr.write(
+      `[build-assets] failed to copy template (${error?.message ?? error})\n`
+    );
+  }
 
   process.stdout.write(
     [
