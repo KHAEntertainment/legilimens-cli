@@ -1,3 +1,5 @@
+import { getRuntimeConfig } from '../config/runtimeConfig.js';
+
 /**
  * Parameters for building AI generation prompts
  */
@@ -29,8 +31,20 @@ export interface PromptBuildResult {
   };
 }
 
-const MAX_DOCUMENTATION_LENGTH = 100000; // 100KB
 const TRUNCATION_MESSAGE = '\n\n[Documentation truncated for length...]';
+
+/**
+ * Get maximum documentation length based on local LLM capacity
+ * Defaults to 100KB if no local LLM configured
+ */
+function getMaxDocumentationLength(): number {
+  const rc = getRuntimeConfig();
+  if (rc.localLlm?.enabled && rc.localLlm?.tokens) {
+    // Use ~40% of model capacity for documentation (chars ≈ tokens * 4)
+    return Math.floor(rc.localLlm.tokens * 0.4 * 4);
+  }
+  return 100000; // 100KB default
+}
 
 /**
  * Build AI generation prompt for gateway documentation
@@ -41,14 +55,15 @@ export function buildGatewayGenerationPrompt(params: PromptParams): PromptBuildR
     console.warn('Empty documentation provided to prompt builder');
   }
 
-  // Truncate documentation if too large
+  // Truncate documentation if too large (based on local LLM capacity)
+  const maxLength = getMaxDocumentationLength();
   let documentation = params.fetchedDocumentation;
   let truncated = false;
 
-  if (documentation.length > MAX_DOCUMENTATION_LENGTH) {
-    documentation = documentation.substring(0, MAX_DOCUMENTATION_LENGTH) + TRUNCATION_MESSAGE;
+  if (documentation.length > maxLength) {
+    documentation = documentation.substring(0, maxLength) + TRUNCATION_MESSAGE;
     truncated = true;
-    console.warn(`Documentation truncated from ${params.fetchedDocumentation.length} to ${MAX_DOCUMENTATION_LENGTH} bytes`);
+    console.warn(`Documentation truncated from ${params.fetchedDocumentation.length} to ${maxLength} bytes`);
   }
 
   // Build structured prompt

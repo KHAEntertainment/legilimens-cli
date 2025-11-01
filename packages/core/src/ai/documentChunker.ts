@@ -34,13 +34,19 @@ export async function condenseDocumentation(
 
   const totalTokens = estimateTokens(documentation);
   const llmEnabled = Boolean(runtimeEnv.localLlm?.enabled);
-  const tokenBudget = 14000; // keep headroom for prompt/template
+  
+  // Token budget aligned with model's context window (Granite = 128K, phi-4 = 16K)
+  // Use 90% of capacity to leave headroom for prompt overhead and safety margin
+  const modelMaxTokens = runtimeEnv.localLlm?.tokens ?? 8192;
+  const tokenBudget = Math.floor(modelMaxTokens * 0.9);
 
   if (!llmEnabled || totalTokens <= tokenBudget) {
     return documentation;
   }
 
-  const chunks = chunkText(documentation, 2000, 200);
+  // Cap chunk size based on model capacity (25% of context window)
+  const targetTokensPerChunk = Math.min(2000, Math.floor(modelMaxTokens * 0.25));
+  const chunks = chunkText(documentation, targetTokensPerChunk, 200);
   const summaries: string[] = [];
 
   for (const chunk of chunks) {
@@ -65,10 +71,7 @@ export async function condenseDocumentation(
   // Final aggregation (without another LLM pass to keep tests offline-friendly)
   const aggregated = summaries.join('\n\n');
 
-  // Ensure aggregated stays within a safe limit
-  const maxTokens = 12000;
-  const approxChars = maxTokens * 4;
+  // Ensure aggregated stays within the token budget
+  const approxChars = tokenBudget * 4;
   return aggregated.length > approxChars ? aggregated.slice(0, approxChars) : aggregated;
 }
-
-

@@ -112,7 +112,7 @@ export async function runClackApp(): Promise<void> {
 
       // Display ASCII banner with colors
       try {
-        const bannerPath = join(__dirname, 'assets', 'banner.txt');
+        const bannerPath = join(__dirname, '..', 'assets', 'banner.txt');
         const banner = loadAsciiBanner({
           externalPath: existsSync(bannerPath) ? bannerPath : undefined,
           minimal: false,
@@ -156,27 +156,29 @@ export async function runClackApp(): Promise<void> {
 
       if (action === 'generate') {
         try {
-          // Determine template path using import.meta.url for dist compatibility
-          const bundledTemplate = new URL('../assets/templates/legilimens-template.md', import.meta.url);
+          // Determine template path - works for both tsx (dev) and compiled (dist) execution
           const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
+          const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
+          const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
           
           // Debug logging (only in debug mode)
           if (process.env.LEGILIMENS_DEBUG) {
             console.log('[DEBUG] __dirname:', __dirname);
             console.log('[DEBUG] process.cwd():', process.cwd());
-            console.log('[DEBUG] Bundled template URL:', bundledTemplate.href);
             console.log('[DEBUG] Default template:', defaultTemplate);
             console.log('[DEBUG] Default exists:', existsSync(defaultTemplate));
+            console.log('[DEBUG] Bundled template:', bundledTemplate);
+            console.log('[DEBUG] Bundled exists:', existsSync(bundledTemplate));
+            console.log('[DEBUG] Src template:', srcTemplate);
+            console.log('[DEBUG] Src exists:', existsSync(srcTemplate));
           }
           
-          // Prefer user's custom template if it exists, otherwise use bundled
-          let templatePath: string;
-          if (existsSync(defaultTemplate)) {
-            templatePath = defaultTemplate;
-          } else {
-            // Convert URL to file path for bundled template
-            templatePath = fileURLToPath(bundledTemplate);
-          }
+          // Prefer user's custom template, then bundled, then src
+          const templatePath = existsSync(defaultTemplate)
+            ? defaultTemplate
+            : existsSync(bundledTemplate)
+            ? bundledTemplate
+            : srcTemplate;
           
           if (process.env.LEGILIMENS_DEBUG) {
             console.log('[DEBUG] Selected template path:', templatePath);
@@ -188,7 +190,8 @@ export async function runClackApp(): Promise<void> {
             console.error('\n❌ Error: Template file not found at:', templatePath);
             console.error('\nSearched locations:');
             console.error('  1. User template:', defaultTemplate);
-            console.error('  2. Bundled template:', fileURLToPath(bundledTemplate));
+            console.error('  2. Bundled template:', bundledTemplate);
+            console.error('  3. Source template:', srcTemplate);
             console.error('\nPlease ensure the template file exists.');
             exitCode = 1;
             shouldContinue = false;
@@ -209,12 +212,31 @@ export async function runClackApp(): Promise<void> {
             console.log('[DEBUG] Result:', JSON.stringify(result, null, 2));
           }
           
-          // Set exit code based on result, but allow returning to menu
+          // Handle unsuccessful result
           if (!result.success) {
             exitCode = 1;
+            
+            // Display error to user
+            if (result.error) {
+              note(`❌ ${result.error}`, 'Generation Failed');
+            }
+            
+            // Ask if user wants to continue
+            const continueChoice = await select({
+              message: 'What would you like to do next?',
+              options: [
+                { value: 'menu', label: 'Return to main menu' },
+                { value: 'quit', label: 'Quit' },
+              ],
+            });
+            
+            if (typeof continueChoice === 'symbol' || continueChoice === 'quit') {
+              shouldContinue = false;
+            }
+            continue;
           }
           
-          // Ask if user wants to continue
+          // Success - ask if user wants to continue
           const continueChoice = await select({
             message: 'What would you like to do next?',
             options: [
@@ -230,24 +252,28 @@ export async function runClackApp(): Promise<void> {
           console.error('\n❌ Error in generation flow:');
           if (error instanceof Error) {
             console.error(error.message);
-            if (process.env.LEGILIMENS_DEBUG) {
-              console.error('\nStack trace:');
-              console.error(error.stack);
-            }
+            console.error('\nStack trace:');
+            console.error(error.stack);
           } else {
             console.error(String(error));
           }
           exitCode = 1;
           
-          // In debug mode, wait for keypress to keep screen visible
-          if (process.env.LEGILIMENS_DEBUG && !disableTuiMode) {
-            console.log('\n[DEBUG] Press any key to continue...');
-            process.stdin.setRawMode(true);
-            await new Promise(resolve => process.stdin.once('data', resolve));
-            process.stdin.setRawMode(false);
+          // Wait for keypress to keep error visible
+          if (!disableTuiMode) {
+            console.log('\n📝 Press any key to return to menu...');
+            try {
+              process.stdin.setRawMode(true);
+              await new Promise(resolve => process.stdin.once('data', resolve));
+              process.stdin.setRawMode(false);
+            } catch {
+              // If raw mode fails, just wait a bit
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
           }
           
-          shouldContinue = false;
+          // Return to menu instead of exiting
+          continue;
         }
       }
     }
@@ -287,4 +313,3 @@ export async function runClackApp(): Promise<void> {
     }
   }
 }
-

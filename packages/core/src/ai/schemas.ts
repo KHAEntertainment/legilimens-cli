@@ -32,6 +32,16 @@ export const toolCallSchema = z.object({
 export type ToolCall = z.infer<typeof toolCallSchema>;
 
 /**
+ * Schema for AI-generated gateway content
+ */
+export const aiGeneratedContentSchema = z.object({
+  shortDescription: z.string().min(10),
+  features: z.array(z.string()).min(3).max(10)
+});
+
+export type AiGeneratedContent = z.infer<typeof aiGeneratedContentSchema>;
+
+/**
  * Helper to validate and parse JSON against a schema
  */
 export function validateWithSchema<T>(
@@ -69,6 +79,13 @@ export function getSchemaPromptHint(schema: z.ZodSchema): string {
     return `{
   "tool": "firecrawl|context7|ref",
   "args": { "url": string, "owner"?: string, "repo"?: string }
+}`;
+  }
+  
+  if (schema === aiGeneratedContentSchema) {
+    return `{
+  "shortDescription": string,  // 2-3 sentence description (min 10 chars)
+  "features": string[]         // 3-10 key features/capabilities
 }`;
   }
   

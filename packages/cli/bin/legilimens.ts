@@ -27,7 +27,7 @@ if (args.includes('--help') || args.includes('-h')) {
 // Handle --version flag
 if (args.includes('--version') || args.includes('-v')) {
   try {
-    const packageJsonPath = join(__dirname, '..', 'package.json');
+    const packageJsonPath = join(__dirname, '..', '..', 'package.json');
     const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8')) as { version: string };
     console.log(`legilimens v${packageJson.version}`);
   } catch (error) {
@@ -45,10 +45,24 @@ if (args.includes('--setup')) {
 if (args.includes('--reset')) {
   const { getConfigPath } = await import('../src/config/userConfig.js');
   const { unlinkSync, existsSync } = await import('fs');
+  const { join } = await import('path');
+  const { homedir } = await import('os');
+  
   const configPath = getConfigPath();
   if (existsSync(configPath)) {
     unlinkSync(configPath);
   }
+  
+  // Also remove secrets.json if present
+  const secretsPath = join(homedir(), '.legilimens', 'secrets.json');
+  if (existsSync(secretsPath)) {
+    try {
+      unlinkSync(secretsPath);
+    } catch {
+      // Ignore errors - secrets file may be locked or inaccessible
+    }
+  }
+  
   process.env.LEGILIMENS_FORCE_SETUP = 'true';
 }
 

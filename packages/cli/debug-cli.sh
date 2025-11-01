@@ -1,13 +1,21 @@
 #!/bin/bash
+set -e
 
-echo "=== Running Legilimens CLI in Debug Mode ==="
-echo ""
-echo "This will show detailed logging to help diagnose issues."
-echo "Press Ctrl+C to exit at any time."
-echo ""
-echo "Starting in 2 seconds..."
-sleep 2
+# Capture all output
+exec 2>&1
 
-cd "$(dirname "$0")"
-export LEGILIMENS_DEBUG=true
-exec node dist/bin/legilimens.js "$@"
+# Set TMPDIR
+export TMPDIR=/tmp
+
+echo "=== Starting CLI with full error capture ==="
+echo "Working directory: $(pwd)"
+echo "Node version: $(node --version)"
+echo ""
+
+# Run tsx with error handling
+npx tsx bin/legilimens.ts || {
+  EXIT_CODE=$?
+  echo ""
+  echo "=== CLI EXITED WITH CODE: $EXIT_CODE ==="
+  exit $EXIT_CODE
+}

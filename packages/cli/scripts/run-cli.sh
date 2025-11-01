@@ -19,6 +19,14 @@ if [ -n "$LEGILIMENS_DEBUG" ]; then
   echo "[DEBUG] src/clackApp.ts exists: $([ -f "src/clackApp.ts" ] && echo "yes" || echo "no")"
 fi
 
+# LEGILIMENS_FORCE_TSX bypasses dist and forces TypeScript execution
+if [ -n "$LEGILIMENS_FORCE_TSX" ]; then
+  if [ -n "$LEGILIMENS_DEBUG" ]; then
+    echo "[DEBUG] LEGILIMENS_FORCE_TSX set, forcing tsx execution"
+  fi
+  exec npx tsx src/clackApp.ts "$@"
+fi
+
 # Check if compiled version exists, use it if available
 if [ -f "dist/bin/legilimens.js" ]; then
   if [ -n "$LEGILIMENS_DEBUG" ]; then

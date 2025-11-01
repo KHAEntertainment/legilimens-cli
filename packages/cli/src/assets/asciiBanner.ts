@@ -106,40 +106,46 @@ const renderFigletBanner = (
   font: string,
   width?: number
 ): BannerLoadOutcome => {
-  const availableFonts = figlet.fontsSync();
-  if (!availableFonts.includes(font)) {
-    return { banner: null, error: `Figlet font "${font}" is unavailable.` };
-  }
+  // Skip font validation (fontsSync() uses require() which fails in ESM)
+  // Instead, try to render and catch the error if font is unavailable
+  try {
+    const rendered = figlet.textSync(text, {
+      font,
+      width,
+      horizontalLayout: 'default',
+      verticalLayout: 'default'
+    });
 
-  const rendered = figlet.textSync(text, {
-    font,
-    width,
-    horizontalLayout: 'default',
-    verticalLayout: 'default'
-  });
+    if (!rendered) {
+      return { banner: null, error: 'Figlet rendered an empty banner.' };
+    }
 
-  if (!rendered) {
-    return { banner: null, error: 'Figlet rendered an empty banner.' };
-  }
+    const lines = toLines(rendered);
+    if (!lines.every(isPrintableLine)) {
+      return { banner: null, error: 'Figlet output contained unsupported characters.' };
+    }
 
-  const lines = toLines(rendered);
-  if (!lines.every(isPrintableLine)) {
-    return { banner: null, error: 'Figlet output contained unsupported characters.' };
-  }
+    if (typeof width === 'number' && !withinWidth(lines, width)) {
+      return {
+        banner: null,
+        error: `Figlet banner exceeded configured width of ${width} columns.`
+      };
+    }
 
-  if (typeof width === 'number' && !withinWidth(lines, width)) {
     return {
-      banner: null,
-      error: `Figlet banner exceeded configured width of ${width} columns.`
+      banner: {
+        lines,
+        source: 'figlet'
+      }
+    };
+  } catch (error) {
+    // Font doesn't exist or other figlet error
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return { 
+      banner: null, 
+      error: `Figlet error: ${errorMsg}. Font "${font}" may be unavailable.` 
     };
   }
-
-  return {
-    banner: {
-      lines,
-      source: 'figlet'
-    }
-  };
 };
 
 export const loadAsciiBanner = (options: BannerOptions = {}): BannerResult => {

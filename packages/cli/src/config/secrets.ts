@@ -8,27 +8,42 @@ const SERVICE_NAME = 'legilimens-cli';
 let keytar: any = null;
 let KEYCHAIN_AVAILABLE = false;
 let KEYCHAIN_ERROR: string | null = null;
+let initPromise: Promise<void> | null = null;
 
-(async () => {
-  try {
-    keytar = await import('keytar');
-    KEYCHAIN_AVAILABLE = Boolean(keytar?.setPassword);
-    if (KEYCHAIN_AVAILABLE && process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[secrets] Keychain available on ${platform()}`);
-    }
-  } catch (error) {
-    KEYCHAIN_AVAILABLE = false;
-    KEYCHAIN_ERROR = error instanceof Error ? error.message : String(error);
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[secrets] Keychain unavailable on ${platform()}: ${KEYCHAIN_ERROR}`);
-    }
+/**
+ * Ensure keytar is initialized before using any secret storage functions
+ * Uses a cached promise to ensure initialization only happens once
+ */
+const ensureInitialized = async (): Promise<void> => {
+  if (initPromise) {
+    return initPromise;
   }
-})();
+  
+  initPromise = (async () => {
+    try {
+      keytar = await import('keytar');
+      KEYCHAIN_AVAILABLE = Boolean(keytar?.setPassword);
+      if (KEYCHAIN_AVAILABLE && process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[secrets] Keychain available on ${platform()}`);
+      }
+    } catch (error) {
+      KEYCHAIN_AVAILABLE = false;
+      KEYCHAIN_ERROR = error instanceof Error ? error.message : String(error);
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[secrets] Keychain unavailable on ${platform()}: ${KEYCHAIN_ERROR}`);
+      }
+    }
+  })();
+  
+  return initPromise;
+};
 
 /**
  * Save an API key to the system keychain or fallback to file storage
  */
 export const saveApiKey = async (service: string, key: string): Promise<{ success: boolean; error?: string; method?: string }> => {
+  await ensureInitialized();
+  
   try {
     if (KEYCHAIN_AVAILABLE && keytar) {
       if (process.env.LEGILIMENS_DEBUG) {
@@ -100,6 +115,8 @@ export const saveApiKey = async (service: string, key: string): Promise<{ succes
  * Retrieve an API key from the system keychain or fallback file storage
  */
 export const getApiKey = async (service: string): Promise<string | null> => {
+  await ensureInitialized();
+  
   try {
     if (KEYCHAIN_AVAILABLE && keytar) {
       return await keytar.getPassword(SERVICE_NAME, service);
@@ -138,6 +155,8 @@ export const getApiKey = async (service: string): Promise<string | null> => {
  * Delete an API key from the system keychain or fallback file storage
  */
 export const deleteApiKey = async (service: string): Promise<{ success: boolean; error?: string }> => {
+  await ensureInitialized();
+  
   try {
     if (KEYCHAIN_AVAILABLE && keytar) {
       const deleted = await keytar.deletePassword(SERVICE_NAME, service);
@@ -180,14 +199,16 @@ export const deleteApiKey = async (service: string): Promise<{ success: boolean;
 /**
  * Check if keychain storage is available
  */
-export const isKeychainAvailable = (): boolean => {
+export const isKeychainAvailable = async (): Promise<boolean> => {
+  await ensureInitialized();
   return KEYCHAIN_AVAILABLE;
 };
 
 /**
  * Get storage method description for user display
  */
-export const getStorageMethod = (): string => {
+export const getStorageMethod = async (): Promise<string> => {
+  await ensureInitialized();
   return KEYCHAIN_AVAILABLE ? 'System Keychain' : 'config file';
 };
 
@@ -247,12 +268,13 @@ export const validateStoredKeys = async (services: string[]): Promise<{ success:
 /**
  * Get diagnostic information about keychain availability
  */
-export const getKeychainDiagnostics = (): {
+export const getKeychainDiagnostics = async (): Promise<{
   platform: string;
   available: boolean;
   error: string | null;
   serviceName: string;
-} => {
+}> => {
+  await ensureInitialized();
   return {
     platform: platform(),
     available: KEYCHAIN_AVAILABLE,
@@ -264,8 +286,8 @@ export const getKeychainDiagnostics = (): {
 /**
  * Create user-friendly error message with diagnostic context
  */
-export const createStorageErrorMessage = (error: string, service: string): string => {
-  const diag = getKeychainDiagnostics();
+export const createStorageErrorMessage = async (error: string, service: string): Promise<string> => {
+  const diag = await getKeychainDiagnostics();
   const platformName = {
     darwin: 'macOS Keychain',
     win32: 'Windows Credential Manager',

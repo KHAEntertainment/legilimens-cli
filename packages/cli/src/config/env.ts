@@ -70,6 +70,50 @@ export const loadCliEnvironment = async (
     if (mergedConfig.aiCliConfig.commandOverride) env.LEGILIMENS_AI_CLI_COMMAND_OVERRIDE = mergedConfig.aiCliConfig.commandOverride;
     if (mergedConfig.aiCliConfig.timeoutMs) env.LEGILIMENS_AI_CLI_TIMEOUT_MS = String(mergedConfig.aiCliConfig.timeoutMs);
   }
+  
+  // Apply local LLM configuration from mergedConfig
+  if (mergedConfig.localLlm) {
+    if (mergedConfig.localLlm.enabled !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_ENABLED = String(mergedConfig.localLlm.enabled);
+    }
+    if (mergedConfig.localLlm.binaryPath) {
+      env.LEGILIMENS_LOCAL_LLM_BIN = mergedConfig.localLlm.binaryPath;
+    }
+    if (mergedConfig.localLlm.modelPath) {
+      env.LEGILIMENS_LOCAL_LLM_MODEL = mergedConfig.localLlm.modelPath;
+    }
+    if (mergedConfig.localLlm.tokens !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_TOKENS = String(mergedConfig.localLlm.tokens);
+    }
+    if (mergedConfig.localLlm.threads !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_THREADS = String(mergedConfig.localLlm.threads);
+    }
+    if (mergedConfig.localLlm.temp !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_TEMP = String(mergedConfig.localLlm.temp);
+    }
+    if (mergedConfig.localLlm.timeoutMs !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_TIMEOUT = String(mergedConfig.localLlm.timeoutMs);
+    }
+    if (mergedConfig.localLlm.resetBetweenTasks !== undefined) {
+      env.LEGILIMENS_LOCAL_LLM_RESET = String(mergedConfig.localLlm.resetBetweenTasks);
+    }
+  }
+  
+  // Apply Tavily configuration from mergedConfig
+  if (mergedConfig.tavily) {
+    if (mergedConfig.tavily.enabled !== undefined) {
+      env.TAVILY_ENABLED = String(mergedConfig.tavily.enabled);
+    }
+    if (mergedConfig.tavily.apiKey) {
+      env.TAVILY_API_KEY = mergedConfig.tavily.apiKey;
+    }
+    if (mergedConfig.tavily.timeoutMs !== undefined) {
+      env.TAVILY_TIMEOUT_MS = String(mergedConfig.tavily.timeoutMs);
+    }
+    if (mergedConfig.tavily.maxResults !== undefined) {
+      env.TAVILY_MAX_RESULTS = String(mergedConfig.tavily.maxResults);
+    }
+  }
 
   const runtime = assertSupportedNode(env);
   const mode = resolveMode(args, env);

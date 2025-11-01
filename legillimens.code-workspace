@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../graphrag-with-sqlite_vec"
+		}
+	],
+	"settings": {}
+}

@@ -1,4 +1,4 @@
-import { tavily } from '@tavily/core';
+import { tavily, type TavilySearchOptions } from '@tavily/core';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 
 export interface SearchResultItem {
@@ -31,12 +31,14 @@ export async function searchPreferredSources(query: string, dependencyName: stri
   // Based on testing: this gives highest relevance scores and best GitHub detection
   const searchQuery = `${dependencyName} official GitHub repository and developer documentation`;
   
-  const response = await client.search(searchQuery, {
-    includeAnswer: 'basic',  // Tavily extracts GitHub URLs for us!
-    include_domains: ['github.com', 'context7.com'],  // Force relevant sources
+  const searchOptions: TavilySearchOptions = {
+    includeAnswer: true,  // Boolean, not string - Tavily extracts GitHub URLs for us!
+    includeDomains: ['github.com', 'context7.com'],  // Correct camelCase key
     maxResults: rc.tavily.maxResults ?? 5,
     timeout: rc.tavily.timeoutMs ?? 15000,
-  } as any);
+  };
+
+  const response = await client.search(searchQuery, searchOptions);
 
   const items: SearchResultItem[] = (response.results || []).map((r: any) => ({
     title: r.title,
@@ -93,5 +95,3 @@ function classifyUrl(url: string): SearchResultItem['sourceHint'] {
   if (u.includes('docs.') || u.includes('/docs') || u.includes('developer') || u.includes('dev.')) return 'official';
   return 'other';
 }
-
-

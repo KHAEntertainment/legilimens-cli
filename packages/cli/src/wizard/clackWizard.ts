@@ -46,8 +46,8 @@ export async function runClackWizard(): Promise<WizardResult> {
         ? `✓ llama.cpp: Installed at ${existingInstallation.binaryPath || paths.binaryPath}`
         : '✗ llama.cpp: Not installed',
       configStatus.modelInstalled
-        ? `✓ phi-4 model: Installed at ${existingInstallation.modelPath || paths.modelPath}`
-        : '✗ phi-4 model: Not installed',
+        ? `✓ Granite model: Installed at ${existingInstallation.modelPath || paths.modelPath}`
+        : '✗ Granite model: Not installed',
       configStatus.tavilyKeyExists
         ? '✓ Tavily API key: Configured'
         : '✗ Tavily API key: Not configured',
@@ -83,7 +83,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       }
     }
 
-    note(`Legilimens will automatically install llama.cpp and phi-4 GGUF model.\nConfiguration will be saved to ~/.legilimens/config.json\nAPI keys stored securely in ${getStorageMethod()}.`, 'Welcome');
+    note(`Legilimens will automatically install llama.cpp and Granite 4.0 Micro GGUF model.\nConfiguration will be saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}.`, 'Welcome');
 
     // Handle llama.cpp installation
     let llamaBin: string | undefined;
@@ -98,25 +98,17 @@ export async function runClackWizard(): Promise<WizardResult> {
       // If model is missing, download it
       if (!modelPath || !existsSync(modelPath)) {
         const installSpinner = spinner();
-        installSpinner.start('Downloading phi-4 model');
-
+        installSpinner.start('Downloading Granite model');
         const installResult = await ensureLlamaCppInstalled((msg) => {
           installSpinner.message(msg);
         });
-
-        if (!installResult.success) {
-          installSpinner.stop('Model download failed');
-          cancel(`Failed to download model: ${installResult.error}`);
-          return { success: false, error: installResult.error };
-        }
-
-        installSpinner.stop('phi-4 model ready');
+        installSpinner.stop('Granite model ready');
         modelPath = installResult.modelPath;
       }
     } else {
       // No existing installation detected - install llama.cpp and model
       const installSpinner = spinner();
-      installSpinner.start('Installing llama.cpp and phi-4 model');
+      installSpinner.start('Installing llama.cpp and Granite model');
 
       const installResult = await ensureLlamaCppInstalled((msg) => {
         installSpinner.message(msg);
@@ -128,7 +120,7 @@ export async function runClackWizard(): Promise<WizardResult> {
         return { success: false, error: installResult.error };
       }
 
-      installSpinner.stop('llama.cpp and phi-4 model ready');
+      installSpinner.stop('llama.cpp and Granite model ready');
       llamaBin = installResult.binaryPath;
       modelPath = installResult.modelPath;
     }
@@ -238,7 +230,12 @@ export async function runClackWizard(): Promise<WizardResult> {
       localLlm: llamaBin && modelPath ? {
         enabled: true,
         binaryPath: llamaBin,
-        modelPath: modelPath
+        modelPath: modelPath,
+        tokens: 128000,  // Granite 4.0 Micro context window
+        threads: 8,      // Reasonable default for most systems
+        temp: 0.7,       // Balance between creativity and consistency
+        timeoutMs: 60000, // 60 seconds for generation tasks
+        resetBetweenTasks: true  // Clean state between generations
       } : current.localLlm,
       setupCompleted: true,
       configVersion: current.configVersion || '1.0.0'
@@ -271,7 +268,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       return { success: false, error: res.error };
     }
     
-    saveSpinner.stop(`Configuration saved to ~/.legilimens/config.json\nAPI keys stored securely in ${getStorageMethod()}`);
+    saveSpinner.stop(`Configuration saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}`);
 
     // Export relevant env for this session (only if non-empty values were entered)
     if (llamaBin && modelPath) {

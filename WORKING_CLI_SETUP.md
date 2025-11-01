@@ -50,6 +50,17 @@ As of commit `99932db`, the Legilimens CLI is working correctly with all major i
 - ✅ **Context7**: Configured and accessible
 - ✅ **RefTools**: Configured and accessible
 
+### Fetcher Configuration (Environment Variables)
+You can customize fetch behavior with these environment variables:
+- `LEGILIMENS_FETCH_TIMEOUT_MS` - Timeout for each fetch attempt (default: 60000ms)
+- `LEGILIMENS_FETCH_RETRIES` - Maximum number of retry attempts (default: 2)
+
+Example:
+```bash
+export LEGILIMENS_FETCH_TIMEOUT_MS=90000  # 90 seconds
+export LEGILIMENS_FETCH_RETRIES=3         # 3 retries
+```
+
 ### Local LLM Installation
 - ✅ **Binary**: `/Users/bbrenner/.legilimens/bin/build/bin/llama-cli` (8.4MB, executable)
 - ✅ **Model**: `/Users/bbrenner/.legilimens/models/phi-4-q4.gguf` (8.4GB, complete)
@@ -68,6 +79,14 @@ As of commit `99932db`, the Legilimens CLI is working correctly with all major i
 - ✅ **Tavily**: API key loaded and accessible
 - ✅ **Environment**: All variables properly populated
 - ✅ **Runtime Config**: Complete and valid
+
+### Development Testing
+For active development and testing detection/fetch iterations, use:
+```bash
+pnpm --filter @legilimens/cli start:dev
+```
+
+This bypasses the compiled `dist` build and runs directly from TypeScript sources using `tsx`, ensuring you always test the latest code changes without needing to rebuild.
 
 ## 📁 File Structure
 

@@ -108,7 +108,7 @@ export function detectInstalledCliTools(override?: CliToolOverride): DetectionRe
 
   // If override is provided and the preferred tool exists at the override path, add it
   if (override?.preferred && override.path) {
-    const { existsSync } = require('fs');
+    // existsSync is already imported at line 2, no need to require it
     if (existsSync(override.path)) {
       // Check if this tool already exists in tools
       const existingToolIndex = tools.findIndex((t) => t.name === override.preferred);

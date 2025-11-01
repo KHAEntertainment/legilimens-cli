@@ -15,6 +15,14 @@ export async function fetchFromContext7(
   packageName: string,
   config: FetcherConfig
 ): Promise<FetchResult> {
+  // Early guard: Context7 requires API key
+  if (!config.apiKey) {
+    return {
+      success: false,
+      error: 'Context7 API key is required'
+    };
+  }
+
   const startTime = Date.now();
   const attempts: string[] = [];
 

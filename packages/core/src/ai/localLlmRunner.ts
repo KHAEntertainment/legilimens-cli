@@ -75,6 +75,7 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     '-f', file,
     '-n', String(maxTokens ?? (rc.localLlm?.tokens ?? 512)),
     '--temp', String(temperature ?? (rc.localLlm?.temp ?? 0.2)),
+    '--log-disable',  // Suppress llama.cpp build info and logs
   ];
   if (rc.localLlm?.threads) args.push('-t', String(rc.localLlm.threads));
 
@@ -119,7 +120,21 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     const writeSuccess = writePromptFile();
     if (!writeSuccess || settled) return;
 
-    const child = spawn(bin, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    // Debug output for troubleshooting
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[localLlm] Prompt file: ${file}`);
+      console.debug(`[localLlm] Command: ${bin} ${args.join(' ')}`);
+      console.debug(`[localLlm] Prompt content:\n${wrapped}`);
+    }
+
+    const child = spawn(bin, args, { 
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        LLAMA_LOG_LEVEL: '40',
+        LLAMA_LOG_COLORS: '0'
+      }
+    });
     to = setTimeout(() => {
       timedOut = true;
       child.kill('SIGKILL');
@@ -203,7 +218,7 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     });
   });
 
-  // Single retry on invalid JSON
+  // First attempt
   const first = await attempt();
   if (first.success) return first;
   
@@ -211,7 +226,7 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug('[localLlm] Retrying due to invalid JSON response');
     }
-    // Retry once
+    // Second attempt
     const second = await attempt();
     if (second.success) {
       if (process.env.LEGILIMENS_DEBUG) {
@@ -220,8 +235,125 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
       return second;
     }
     
+    // Check if response contains prose like "I am ready" or "Here is"
+    const rawLower = (second.raw || first.raw).toLowerCase();
+    const containsProse = /(?:i am|here is|let me|i'll|i will|sure|certainly)/i.test(rawLower);
+    
+    if (containsProse) {
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug('[localLlm] Detected prose in response, attempting third attempt with stricter prompt');
+      }
+      
+      // Third attempt with stricter system-level ban on prose
+      const stricterWrapped = `CRITICAL: You are a JSON API. You MUST respond with ONLY valid JSON. NO prose, NO explanations, NO "I am ready", NO "Here is", NO text before or after JSON.
+
+If you output ANYTHING other than pure JSON, the system will fail.
+
+REQUIRED OUTPUT FORMAT (JSON only, nothing else):
+${schema ? `\nThe JSON must match this schema:\n${getSchemaPromptHint(schema)}\n` : ''}
+
+${prompt}
+
+REMINDER: Output ONLY the JSON object. Start with { and end with }. Nothing else.`;
+
+      // Write the stricter prompt
+      try {
+        mkdirSync(tempDir, { recursive: true });
+        const strictFile = join(tempDir, `llama-prompt-strict-${unique}.txt`);
+        writeFileSync(strictFile, stricterWrapped, 'utf8');
+        
+        const args: string[] = [
+          '-m', model,
+          '-f', strictFile,
+          '-n', String(maxTokens ?? (rc.localLlm?.tokens ?? 512)),
+          '--temp', String(temperature ?? (rc.localLlm?.temp ?? 0.2)),
+        ];
+        if (rc.localLlm?.threads) args.push('-t', String(rc.localLlm.threads));
+        
+        const thirdAttemptResult = await new Promise<LlmRunResult<T>>((resolve) => {
+          let stdout = '';
+          let stderr = '';
+          let timedOut = false;
+          let settled = false;
+          let to: NodeJS.Timeout | undefined;
+          
+          const settle = (result: LlmRunResult<T>) => {
+            if (settled) return;
+            settled = true;
+            if (to) clearTimeout(to);
+            try { unlinkSync(strictFile); } catch {}
+            resolve(result);
+          };
+          
+          const child = spawn(bin, args, { 
+            stdio: ['ignore', 'pipe', 'pipe'],
+            env: {
+              ...process.env,
+              LLAMA_LOG_LEVEL: '40',
+              LLAMA_LOG_COLORS: '0'
+            }
+          });
+          to = setTimeout(() => {
+            timedOut = true;
+            child.kill('SIGKILL');
+          }, timeoutMs ?? (rc.localLlm?.timeoutMs ?? 30000));
+          
+          child.stdout.on('data', (d) => { stdout += String(d); });
+          child.stderr.on('data', (d) => { stderr += String(d); });
+          
+          child.on('error', (error) => {
+            settle({
+              success: false,
+              raw: stdout || stderr,
+              error: `Local LLM process error: ${error instanceof Error ? error.message : String(error)}`,
+              attempts: 1,
+              durationMs: Date.now() - start
+            });
+          });
+          
+          child.on('close', () => {
+            if (settled) return;
+            
+            if (timedOut) {
+              settle({ success: false, raw: stdout, error: `Timed out after ${Date.now() - start}ms`, attempts: 1, durationMs: Date.now() - start });
+              return;
+            }
+            
+            const jsonText = extractFirstJson(stdout) ?? extractFirstJson(stderr) ?? '';
+            const parsed = jsonText ? safeParseJson<T>(jsonText) : null;
+            
+            if (parsed) {
+              if (schema) {
+                const validation = validateWithSchema(schema, parsed);
+                if (validation.success) {
+                  settle({ success: true, raw: stdout, json: validation.data, attempts: 1, durationMs: Date.now() - start });
+                } else {
+                  settle({ success: false, raw: stdout, error: `Schema validation failed: ${validation.error}`, attempts: 1, durationMs: Date.now() - start });
+                }
+              } else {
+                settle({ success: true, raw: stdout, json: parsed, attempts: 1, durationMs: Date.now() - start });
+              }
+            } else {
+              settle({ success: false, raw: stdout || stderr, error: 'Invalid JSON response from local LLM', attempts: 1, durationMs: Date.now() - start });
+            }
+          });
+        });
+        
+        if (thirdAttemptResult.success) {
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug('[localLlm] Third attempt successful');
+          }
+          return { ...thirdAttemptResult, attempts: first.attempts + second.attempts + thirdAttemptResult.attempts };
+        }
+      } catch (error) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug('[localLlm] Third attempt failed:', error);
+        }
+      }
+    }
+    
     if (process.env.LEGILIMENS_DEBUG) {
-      console.debug('[localLlm] Retry also failed, falling back to external CLI tools');
+      console.debug('[localLlm] All attempts failed, falling back to external CLI tools');
     }
     return { ...second, attempts: first.attempts + second.attempts };
   }

@@ -20,6 +20,13 @@ The workspace targets Node.js 20 LTS with Corepack-enabled package management. T
 pnpm --filter @legilimens/cli start
 ```
 
+**For active development** (testing detection/fetch iterations):
+```bash
+pnpm --filter @legilimens/cli start:dev
+```
+
+This bypasses the compiled `dist` build and runs directly from TypeScript sources, ensuring you always test the latest code changes.
+
 On first run, Legilimens automatically:
 
 1. **Launches setup wizard** to detect existing configuration
@@ -185,6 +192,34 @@ Legilimens stores API keys securely using your system's keychain when available:
 1. Environment variables (highest priority)
 2. System keychain/secure storage
 3. Encrypted file fallback
+
+## 8. Advanced Configuration
+
+### Fetch Timeout & Retry Settings
+
+For slow networks or large repositories, you can customize fetch behavior:
+
+```bash
+# Set fetch timeout (default: 60000ms = 60 seconds)
+export LEGILIMENS_FETCH_TIMEOUT_MS=90000
+
+# Set maximum retries (default: 2)
+export LEGILIMENS_FETCH_RETRIES=3
+
+# Then run CLI
+pnpm --filter @legilimens/cli start
+```
+
+These settings apply to all documentation fetchers (Context7, Firecrawl, RefTools).
+
+### Local LLM Token Budget
+
+The local LLM automatically adjusts its token budget based on the model's context window. For phi-4:
+- Model capacity: 16k tokens
+- Documentation budget: ~8k tokens (50% of capacity)
+- Chunk size: ~4k tokens (25% of capacity)
+
+Large documentation is automatically condensed to fit within these limits.
 
 ### Managing Stored Credentials
 

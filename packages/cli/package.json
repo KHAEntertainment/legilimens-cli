@@ -8,6 +8,7 @@
   },
   "scripts": {
     "start": "bash scripts/run-cli.sh",
+    "start:dev": "TMPDIR=/tmp npx tsx --no-cache bin/legilimens.ts",
     "dev": "bash scripts/run-cli.sh",
     "build": "tsc -p tsconfig.json && node scripts/build-assets.mjs",
     "build-assets": "node scripts/build-assets.mjs",

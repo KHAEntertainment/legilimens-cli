@@ -2,6 +2,8 @@ import { homedir, platform, arch } from 'os';
 import { join } from 'path';
 import { existsSync, mkdirSync, chmodSync, createWriteStream, unlinkSync, readdirSync, statSync, copyFileSync, rmSync } from 'fs';
 import { pipeline } from 'stream/promises';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import axios from 'axios';
 import decompress from 'decompress';
 
@@ -22,24 +24,74 @@ export interface ExistingInstallation {
   modelPath?: string;
 }
 
-// llama.cpp release URLs (adjust to actual releases)
-const LLAMA_CPP_RELEASES: Record<string, string> = {
-  'darwin-arm64': 'https://github.com/ggerganov/llama.cpp/releases/download/b4359/llama-b4359-bin-macos-arm64.zip',
-  'darwin-x64': 'https://github.com/ggerganov/llama.cpp/releases/download/b4359/llama-b4359-bin-macos-x64.zip',
-  'linux-x64': 'https://github.com/ggerganov/llama.cpp/releases/download/b4359/llama-b4359-bin-ubuntu-x64.zip',
-  'win32-x64': 'https://github.com/ggerganov/llama.cpp/releases/download/b4359/llama-b4359-bin-win-avx2-x64.zip',
+// Fallback version if GitHub API fails
+const FALLBACK_LLAMA_VERSION = 'b6895';
+
+// Platform-specific binary names
+const PLATFORM_BINARY_NAMES: Record<string, string> = {
+  'darwin-arm64': 'llama-{version}-bin-macos-arm64.zip',
+  'darwin-x64': 'llama-{version}-bin-macos-x64.zip',
+  'linux-x64': 'llama-{version}-bin-ubuntu-x64.zip',
+  'win32-x64': 'llama-{version}-bin-win-avx2-x64.zip',
 };
 
-// phi-4 GGUF model URL (Q4_K_M recommended, ~8.5GB)
-const PHI4_MODEL_URL = 'https://huggingface.co/QuantFactory/phi-4-GGUF/resolve/main/phi-4.Q4_K_M.gguf';
-const PHI4_MODEL_FILENAME = 'phi-4.Q4_K_M.gguf';
-const PHI4_MODEL_LEGACY_FILENAME = 'phi-4-q4.gguf'; // For backward compatibility
+/**
+ * Fetch the latest llama.cpp release tag from GitHub
+ * Falls back to hardcoded version if API fails
+ */
+async function getLatestLlamaCppVersion(): Promise<string> {
+  try {
+    const response = await axios.get('https://api.github.com/repos/ggerganov/llama.cpp/releases/latest', {
+      timeout: 5000,
+      headers: { 'Accept': 'application/vnd.github.v3+json' }
+    });
+    
+    const tagName = response.data.tag_name as string;
+    if (tagName && tagName.startsWith('b')) {
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[llamaInstaller] Latest llama.cpp version: ${tagName}`);
+      }
+      return tagName;
+    }
+  } catch (error) {
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[llamaInstaller] Failed to fetch latest version, using fallback: ${FALLBACK_LLAMA_VERSION}`);
+    }
+  }
+  
+  return FALLBACK_LLAMA_VERSION;
+}
+
+/**
+ * Get download URL for llama.cpp binary based on platform and version
+ */
+async function getLlamaCppDownloadUrl(platformKey: string): Promise<string | null> {
+  const version = await getLatestLlamaCppVersion();
+  const binaryName = PLATFORM_BINARY_NAMES[platformKey];
+  
+  if (!binaryName) {
+    return null;
+  }
+  
+  const filename = binaryName.replace('{version}', version);
+  return `https://github.com/ggerganov/llama.cpp/releases/download/${version}/${filename}`;
+}
+
+// Granite 4.0 Micro GGUF model URL (Q4_K_M recommended, ~2.1GB)
+const GRANITE_MODEL_URL = 'https://huggingface.co/ibm-granite/granite-4.0-micro-GGUF/resolve/main/granite-4.0-micro-Q4_K_M.gguf';
+const GRANITE_MODEL_FILENAME = 'granite-4.0-micro-Q4_K_M.gguf';
+const GRANITE_MODEL_LEGACY_FILENAME = 'phi-4-q4.gguf'; // For backward compatibility
+
+// PHI-4 model constants (for legacy support)
+const PHI4_MODEL_URL = 'https://huggingface.co/bartowski/Phi-4-GGUF/resolve/main/Phi-4-Q4_K_M.gguf';
+const PHI4_MODEL_FILENAME = 'phi-4-q4.gguf';
+const PHI4_MODEL_LEGACY_FILENAME = 'phi-4-Q4_K_M.gguf';
 
 function getPlatformKey(): string | null {
   const p = platform();
   const a = arch();
   const key = `${p}-${a}`;
-  if (key in LLAMA_CPP_RELEASES) return key;
+  if (key in PLATFORM_BINARY_NAMES) return key;
   return null;
 }
 
@@ -108,7 +160,12 @@ export async function detectExistingInstallation(): Promise<ExistingInstallation
   const envModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
 
   if (envBin && envModel && existsSync(envBin) && existsSync(envModel)) {
-    return { found: true, binaryPath: envBin, modelPath: envModel };
+    // Validate binary from environment variable
+    if (await validateLlamaBinary(envBin)) {
+      return { found: true, binaryPath: envBin, modelPath: envModel };
+    } else if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[llamaInstaller] Binary from env var failed validation: ${envBin}`);
+    }
   }
 
   // Check common installation paths for llama.cpp binary
@@ -124,37 +181,40 @@ export async function detectExistingInstallation(): Promise<ExistingInstallation
     ...(platform() === 'win32' ? ['C:\\Program Files\\llama.cpp\\main.exe'] : [])
   ];
   
-  // Also scan BIN_DIR recursively if it exists
-  if (existsSync(BIN_DIR)) {
-    const foundInBinDir = findBinaryInDirectory(BIN_DIR);
-    if (foundInBinDir && !commonPaths.includes(foundInBinDir)) {
-      commonPaths.unshift(foundInBinDir);
-    }
-  }
+  // Remove recursive BIN_DIR scan - it was finding broken binaries
+  // Now we only check explicit paths and validate each one
 
   for (const path of commonPaths) {
     if (existsSync(path)) {
-      // Found binary, now look for model in same directory or common model paths
+      // Validate binary before accepting it
+      if (!(await validateLlamaBinary(path))) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[llamaInstaller] Found binary at ${path} but validation failed, skipping`);
+        }
+        continue; // Skip invalid binaries
+      }
+      
+      // Found and validated binary, now look for model
       const binDir = path.substring(0, path.lastIndexOf(platform() === 'win32' ? '\\' : '/'));
       const modelPaths = [
         // Check MODELS_DIR first (standard location for ~/.legilimens installs)
-        join(MODELS_DIR, PHI4_MODEL_FILENAME),
-        join(MODELS_DIR, PHI4_MODEL_LEGACY_FILENAME),
+        join(MODELS_DIR, GRANITE_MODEL_FILENAME),
+        join(MODELS_DIR, GRANITE_MODEL_LEGACY_FILENAME),
         // Check relative to binary
-        join(binDir, PHI4_MODEL_FILENAME),
-        join(binDir, PHI4_MODEL_LEGACY_FILENAME),
-        join(binDir, '..', 'models', PHI4_MODEL_FILENAME),
-        join(binDir, '..', 'models', PHI4_MODEL_LEGACY_FILENAME),
+        join(binDir, GRANITE_MODEL_FILENAME),
+        join(binDir, GRANITE_MODEL_LEGACY_FILENAME),
+        join(binDir, '..', 'models', GRANITE_MODEL_FILENAME),
+        join(binDir, '..', 'models', GRANITE_MODEL_LEGACY_FILENAME),
         // Check HuggingFace cache
-        join(homedir(), '.cache', 'huggingface', 'hub', 'models--QuantFactory--phi-4-GGUF', PHI4_MODEL_FILENAME),
+        join(homedir(), '.cache', 'huggingface', 'hub', 'models--ibm-granite--granite-4.0-micro-GGUF', GRANITE_MODEL_FILENAME),
         // Check system-wide locations
-        `/usr/local/share/llama.cpp/models/${PHI4_MODEL_FILENAME}`,
-        `/usr/local/share/llama.cpp/models/${PHI4_MODEL_LEGACY_FILENAME}`
+        `/usr/local/share/llama.cpp/models/${GRANITE_MODEL_FILENAME}`,
+        `/usr/local/share/llama.cpp/models/${GRANITE_MODEL_LEGACY_FILENAME}`
       ];
 
       for (const modelPath of modelPaths) {
         if (existsSync(modelPath)) {
-          // Check if file is reasonably sized (phi-4 should be ~8.5GB, so anything < 1GB is likely partial)
+          // Check if file is reasonably sized (Granite should be ~2.1GB, so anything < 1GB is likely partial)
           try {
             const stats = statSync(modelPath);
             const sizeGB = stats.size / (1024 * 1024 * 1024);
@@ -175,7 +235,7 @@ export async function detectExistingInstallation(): Promise<ExistingInstallation
         }
       }
 
-      // Found binary but not model - return binary only
+      // Found and validated binary but not model - return binary only
       return { found: true, binaryPath: path };
     }
   }
@@ -201,12 +261,25 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
 
   const binaryName = platform() === 'win32' ? 'main.exe' : 'main';
   const binaryPath = join(BIN_DIR, binaryName);
-  const modelPath = join(MODELS_DIR, PHI4_MODEL_FILENAME);
-  const legacyModelPath = join(MODELS_DIR, PHI4_MODEL_LEGACY_FILENAME);
+  const modelPath = join(MODELS_DIR, GRANITE_MODEL_FILENAME);
+  const legacyModelPath = join(MODELS_DIR, GRANITE_MODEL_LEGACY_FILENAME);
 
   // Check if already installed in ~/.legilimens (check both current and legacy model filenames)
   if (existsSync(binaryPath)) {
-    if (existsSync(modelPath)) {
+    // Validate existing binary before using it
+    if (!(await validateLlamaBinary(binaryPath))) {
+      onProgress?.('Existing binary failed validation, reinstalling...');
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[llamaInstaller] Removing invalid binary at ${binaryPath}`);
+      }
+      try {
+        unlinkSync(binaryPath);
+      } catch (error) {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[llamaInstaller] Failed to remove invalid binary: ${error}`);
+        }
+      }
+    } else if (existsSync(modelPath)) {
       return { success: true, binaryPath, modelPath };
     } else if (existsSync(legacyModelPath)) {
       // Legacy filename exists - use it
@@ -234,9 +307,9 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
     }
     
     // Only download if model is truly missing
-    onProgress?.('Downloading phi-4 GGUF model (~8.5GB, this may take a while)...');
+    onProgress?.('Downloading Granite GGUF model (~2.1GB, this may take a while)...');
     try {
-      const response = await axios.get(PHI4_MODEL_URL, {
+      const response = await axios.get(GRANITE_MODEL_URL, {
         responseType: 'stream',
         onDownloadProgress: (progressEvent) => {
           const total = progressEvent.total ?? 0;
@@ -250,7 +323,7 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
       onProgress?.('Model downloaded successfully');
       return { success: true, binaryPath: existing.binaryPath, modelPath };
     } catch (error) {
-      return { success: false, error: `Failed to download phi-4 model: ${error instanceof Error ? error.message : String(error)}` };
+      return { success: false, error: `Failed to download Granite model: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
 
@@ -258,7 +331,12 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
   if (!existsSync(binaryPath)) {
     onProgress?.('Downloading llama.cpp binary...');
     try {
-      const url = LLAMA_CPP_RELEASES[platformKey];
+      const url = await getLlamaCppDownloadUrl(platformKey);
+      if (!url) {
+        return { success: false, error: 'Failed to determine llama.cpp download URL' };
+      }
+      
+      const version = await getLatestLlamaCppVersion();
       const zipPath = join(BIN_DIR, 'llama.zip');
       const response = await axios.get(url, { responseType: 'stream' });
       const writer = createWriteStream(zipPath);
@@ -279,15 +357,82 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
         return { success: false, error: 'Binary not found in downloaded archive. Expected main or llama-cli executable.' };
       }
       
-      // Copy binary to expected location
-      copyFileSync(foundBinary, binaryPath);
+      // Determine the root directory of the llama.cpp installation
+      // The binary is typically in something like: extract_temp/llama-b6895-bin-macos-arm64/build/bin/llama-cli
+      // We want to preserve the entire structure under a versioned directory
+      const versionedDir = join(BIN_DIR, `llama-${version}`);
+      
+      onProgress?.('Installing binary with dependencies...');
+      
+      // Find the top-level directory in the extraction (usually something like llama-b6895-bin-macos-arm64)
+      const extractedContents = readdirSync(extractTempDir, { withFileTypes: true });
+      const topLevelDir = extractedContents.find(entry => entry.isDirectory());
+      
+      if (!topLevelDir) {
+        rmSync(extractTempDir, { recursive: true, force: true });
+        return { success: false, error: 'Unexpected archive structure: no top-level directory found.' };
+      }
+      
+      const sourcePath = join(extractTempDir, topLevelDir.name);
+      
+      // Remove existing versioned directory if it exists
+      if (existsSync(versionedDir)) {
+        rmSync(versionedDir, { recursive: true, force: true });
+      }
+      
+      // Move the entire directory structure to preserve all dependencies
+      mkdirSync(versionedDir, { recursive: true });
+      
+      // Copy all contents from source to versioned directory
+      const copyRecursive = (src: string, dest: string) => {
+        const entries = readdirSync(src, { withFileTypes: true });
+        for (const entry of entries) {
+          const srcPath = join(src, entry.name);
+          const destPath = join(dest, entry.name);
+          if (entry.isDirectory()) {
+            mkdirSync(destPath, { recursive: true });
+            copyRecursive(srcPath, destPath);
+          } else {
+            copyFileSync(srcPath, destPath);
+            // Preserve permissions
+            if (platform() !== 'win32') {
+              const stats = statSync(srcPath);
+              chmodSync(destPath, stats.mode);
+            }
+          }
+        }
+      };
+      
+      copyRecursive(sourcePath, versionedDir);
       
       // Clean up temp extraction directory
       rmSync(extractTempDir, { recursive: true, force: true });
       
-      // Make executable on Unix
-      if (platform() !== 'win32' && existsSync(binaryPath)) {
-        chmodSync(binaryPath, 0o755);
+      // Find the binary in the new versioned directory
+      const installedBinary = findBinaryInDirectory(versionedDir);
+      
+      if (!installedBinary) {
+        return { success: false, error: 'Binary not found after installation.' };
+      }
+      
+      // Create a symlink at the expected binaryPath location
+      // This maintains backward compatibility with existing config
+      if (existsSync(binaryPath)) {
+        unlinkSync(binaryPath);
+      }
+      
+      if (platform() === 'win32') {
+        // On Windows, copy the binary to the expected location
+        copyFileSync(installedBinary, binaryPath);
+      } else {
+        // On Unix, create a symlink
+        const { symlinkSync } = await import('fs');
+        symlinkSync(installedBinary, binaryPath);
+      }
+      
+      // Validate the newly installed binary
+      if (!(await validateLlamaBinary(binaryPath))) {
+        return { success: false, error: 'Downloaded binary failed validation. It may be missing required libraries.' };
       }
       
       onProgress?.(`Binary installed at ${binaryPath}`);
@@ -296,11 +441,11 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
     }
   }
 
-  // Download phi-4 model
+  // Download Granite model
   if (!existsSync(modelPath)) {
-    onProgress?.('Downloading phi-4 GGUF model (~8.5GB, this may take a while)...');
+    onProgress?.('Downloading Granite GGUF model (~2.1GB, this may take a while)...');
     try {
-      const response = await axios.get(PHI4_MODEL_URL, { 
+      const response = await axios.get(GRANITE_MODEL_URL, { 
         responseType: 'stream',
         onDownloadProgress: (progressEvent) => {
           const total = progressEvent.total ?? 0;
@@ -313,7 +458,7 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
       await pipeline(response.data, writer);
       onProgress?.('Model downloaded successfully');
     } catch (error) {
-      return { success: false, error: `Failed to download phi-4 model: ${error instanceof Error ? error.message : String(error)}` };
+      return { success: false, error: `Failed to download Granite model: ${error instanceof Error ? error.message : String(error)}` };
     }
   }
 
@@ -322,8 +467,8 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
 
 export function getLlamaPaths(): { binaryPath: string; modelPath: string } {
   const binaryName = platform() === 'win32' ? 'main.exe' : 'main';
-  const modelPath = join(MODELS_DIR, PHI4_MODEL_FILENAME);
-  const legacyModelPath = join(MODELS_DIR, PHI4_MODEL_LEGACY_FILENAME);
+  const modelPath = join(MODELS_DIR, GRANITE_MODEL_FILENAME);
+  const legacyModelPath = join(MODELS_DIR, GRANITE_MODEL_LEGACY_FILENAME);
   
   // Return current filename, but check if legacy exists and current doesn't
   return {
@@ -332,3 +477,38 @@ export function getLlamaPaths(): { binaryPath: string; modelPath: string } {
   };
 }
 
+const execFileAsync = promisify(execFile);
+
+/**
+ * Validate that a binary is a working llama.cpp executable
+ * Tests execution with --version flag and 5-second timeout
+ */
+async function validateLlamaBinary(binaryPath: string): Promise<boolean> {
+  if (!existsSync(binaryPath)) {
+    return false;
+  }
+
+  try {
+    const result = await execFileAsync(binaryPath, ['--version'], {
+      timeout: 5000,
+      env: { ...process.env }
+    });
+    
+    const output = result.stdout + result.stderr;
+    const isValid = output.toLowerCase().includes('llama');
+    
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[llamaInstaller] Binary validation for ${binaryPath}: ${isValid ? 'PASS' : 'FAIL'}`);
+      if (!isValid) {
+        console.debug(`[llamaInstaller] Output: ${output.substring(0, 200)}`);
+      }
+    }
+    
+    return isValid;
+  } catch (error) {
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[llamaInstaller] Binary validation failed for ${binaryPath}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    return false;
+  }
+}

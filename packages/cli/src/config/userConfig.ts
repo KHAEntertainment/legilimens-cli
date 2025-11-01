@@ -19,6 +19,11 @@ export interface UserConfig {
     enabled: boolean;
     binaryPath?: string;
     modelPath?: string;
+    tokens?: number;
+    threads?: number;
+    temp?: number;
+    timeoutMs?: number;
+    resetBetweenTasks?: boolean;
   };
   setupCompleted: boolean;
   configVersion: string;
@@ -114,7 +119,7 @@ export const saveUserConfig = async (config: UserConfig): Promise<{ success: boo
         if (key) {
           const result = await saveApiKey(service, key);
           if (!result.success) {
-            const errorMsg = createStorageErrorMessage(result.error || 'Unknown error', service);
+            const errorMsg = await createStorageErrorMessage(result.error || 'Unknown error', service);
             return {
               success: false,
               error: errorMsg
@@ -150,7 +155,7 @@ export const saveUserConfig = async (config: UserConfig): Promise<{ success: boo
       ...configWithoutKeys,
       localLlm: config.localLlm, // Persist local LLM paths
       configVersion: CONFIG_VERSION,
-      apiKeysStoredInKeychain: isKeychainAvailable(),
+      apiKeysStoredInKeychain: await isKeychainAvailable(),
       _warning: hasApiKeys 
         ? 'API keys are stored securely in system keychain or encrypted file. Do not commit this file to version control.'
         : 'This file contains configuration settings. Do not commit to version control.'

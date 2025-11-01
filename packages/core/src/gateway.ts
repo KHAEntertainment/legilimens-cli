@@ -17,20 +17,22 @@ import {
   summarizePerformance
 } from './telemetry/performance.js';
 import { getRuntimeConfig, isAiGenerationEnabled, isLocalLlmEnabled } from './config/runtimeConfig.js';
-import { fetchDocumentation } from './fetchers/orchestrator.js';
+import { fetchDocumentation, fetchDocumentationWithSource } from './fetchers/orchestrator.js';
 import { isFetchSuccess } from './fetchers/types.js';
 import { generateWithCliTool } from './ai/cliOrchestrator.js';
 import {
   buildGatewayGenerationPrompt,
-  extractShortDescription,
   generateFallbackContent,
   type AiGeneratedContent
 } from './ai/promptBuilder.js';
-import { condenseDocumentation, estimateTokens } from './ai/documentChunker.js';
+import { condenseDocumentation } from './ai/documentChunker.js';
+import { routeDocumentation } from './ai/documentRouter.js';
 import { type CliToolName } from './ai/cliDetector.js';
 import { deriveDeepWikiUrl, type SourceType } from './detection/sourceDetector.js';
 import { normalizeIdentifier, type NormalizedIdentifier } from './detection/normalizeIdentifier.js';
 import { runLocalJson } from './ai/localLlmRunner.js';
+import { aiGeneratedContentSchema, validateWithSchema } from './ai/schemas.js';
+import { extractFirstJson, safeParseJson } from './ai/json.js';
 
 const VALID_DEPENDENCY_TYPES: ReadonlySet<DependencyType> = new Set([
   'framework',
@@ -182,11 +184,20 @@ const buildMcpGuidance = (args: {
   }
 };
 
-const deriveOfficialSource = (identifier: NormalizedIdentifier, deepWikiRepository: string | undefined): string => {
+const deriveOfficialSource = (
+  identifier: NormalizedIdentifier, 
+  deepWikiRepository: string | undefined,
+  repositoryUrl?: string
+): string => {
   const raw = identifier.raw.trim();
   const normalized = identifier.normalized;
 
   if (identifier.sourceType === 'github') {
+    // Prefer repositoryUrl from AI detection if available
+    if (repositoryUrl) {
+      return repositoryUrl;
+    }
+
     const githubMatch = raw.match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([^\s?#]+)(?:[?#].*)?$/i);
     if (githubMatch?.[1]) {
       return `https://github.com/${githubMatch[1].replace(/\.git$/, '')}`;
@@ -208,6 +219,11 @@ const deriveOfficialSource = (identifier: NormalizedIdentifier, deepWikiReposito
     return `https://www.npmjs.com/package/${normalized}`;
   }
 
+  // For URL source type, prefer repositoryUrl
+  if (repositoryUrl && repositoryUrl.includes('://')) {
+    return repositoryUrl;
+  }
+
   if (raw.includes('://')) {
     return raw;
   }
@@ -216,7 +232,7 @@ const deriveOfficialSource = (identifier: NormalizedIdentifier, deepWikiReposito
     return normalized;
   }
 
-  return deepWikiRepository || raw || normalized;
+  return deepWikiRepository || repositoryUrl || raw || normalized;
 };
 
 export const validateTemplate: ValidateTemplate = async (
@@ -335,8 +351,13 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     (typeof variables.dependencyIdentifier === 'string' && variables.dependencyIdentifier.trim()) ||
     'unknown-dependency';
   const dependencyType = sanitizeDependencyType(variables.dependencyType);
+  
+  // Use precomputed sourceType from CLI detection if available, otherwise detect
+  const providedSourceType = typeof variables.sourceType === 'string' ? variables.sourceType as SourceType : undefined;
+  const providedRepositoryUrl = typeof variables.repositoryUrl === 'string' ? variables.repositoryUrl : undefined;
+  
   const normalizedIdentifier = normalizeIdentifier(dependencyIdentifier);
-  const sourceType = normalizedIdentifier.sourceType;
+  const sourceType = providedSourceType || normalizedIdentifier.sourceType;
   const displayName = normalizedIdentifier.displayName;
   const slug = slugify(normalizedIdentifier.normalized);
   
@@ -365,7 +386,12 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
   const runtimeConfig = getRuntimeConfig();
   const localLlmConfigured = isLocalLlmEnabled(runtimeConfig);
   const fetchStartTime = Date.now();
-  const fetchResult = await fetchDocumentation(dependencyIdentifier, runtimeConfig);
+  
+  // Use fetchDocumentationWithSource if sourceType is precomputed, otherwise fallback to fetchDocumentation
+  const fetchResult = providedSourceType
+    ? await fetchDocumentationWithSource(dependencyIdentifier, providedSourceType, runtimeConfig, providedRepositoryUrl)
+    : await fetchDocumentation(dependencyIdentifier, runtimeConfig);
+  
   const fetchDurationMs = Date.now() - fetchStartTime;
 
   let staticContent: string;
@@ -421,8 +447,33 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     const aiStartTime = Date.now();
 
     try {
-      // Condense large documentation with local LLM if enabled
-      const preparedDocs = await condenseDocumentation(staticContent, displayName, dependencyType, runtimeConfig);
+      // Route documentation processing based on size (3-tier strategy)
+      const { preparedDocs, metadata } = await routeDocumentation(
+        staticContent,
+        displayName,
+        dependencyType,
+        runtimeConfig
+      );
+
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(
+          `[gateway] Routing decision: ${metadata.method}\n` +
+          `  Original tokens: ${metadata.originalTokens.toLocaleString()}\n` +
+          `  Processed tokens: ${metadata.processedTokens.toLocaleString()}\n` +
+          `  Model context: ${metadata.modelContextWindow.toLocaleString()}`
+        );
+      }
+
+      // Warn user if documentation was aggressively truncated
+      if (metadata.qualityWarning) {
+        console.warn(
+          `\n⚠️  Large documentation detected for ${displayName}\n` +
+          `   Original size: ${metadata.originalTokens.toLocaleString()} tokens\n` +
+          `   Processed size: ${metadata.processedTokens.toLocaleString()} tokens\n` +
+          `   Documentation truncated to key sections for AI processing.\n` +
+          `   Full documentation preserved in static-backup for reference.\n`
+        );
+      }
 
       // Build AI prompt
       const { prompt } = buildGatewayGenerationPrompt({
@@ -430,7 +481,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
         dependencyType,
         fetchedDocumentation: preparedDocs,
         deepWikiUrl: deepWikiRepository,
-        officialSourceUrl: deriveOfficialSource(normalizedIdentifier, deepWikiRepository)
+        officialSourceUrl: deriveOfficialSource(normalizedIdentifier, deepWikiRepository, providedRepositoryUrl)
       });
 
       const generationAttempts: string[] = [];
@@ -439,7 +490,10 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
         if (process.env.LEGILIMENS_DEBUG) {
           console.debug('[gateway] Attempting AI generation with local LLM');
         }
-        const localResult = await runLocalJson<AiGeneratedContent>({ prompt });
+        const localResult = await runLocalJson<AiGeneratedContent>({ 
+          prompt, 
+          schema: aiGeneratedContentSchema 
+        });
 
         if (localResult.attempts > 0) {
           for (let i = 0; i < localResult.attempts; i += 1) {
@@ -513,15 +567,72 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
           if (process.env.LEGILIMENS_DEBUG) {
             console.debug(`[gateway] External CLI tool success: ${aiResult.toolUsed} in ${aiGenerationDurationMs}ms`);
           }
-          shortDescription = extractShortDescription(aiResult.content);
-          featureList = buildFeatureList({
-            dependencyName: displayName,
-            dependencyType,
-            staticBackupLink,
-            minimalMode: minimalModeRequested,
-            sourceType
-          });
-          aiToolUsed = aiResult.toolUsed;
+          
+          // Extract JSON and validate with schema
+          const jsonText = extractFirstJson(aiResult.content);
+          const parsed = jsonText ? safeParseJson(jsonText) : null;
+          
+          if (parsed) {
+            const validation = validateWithSchema(aiGeneratedContentSchema, parsed);
+            
+            if (validation.success) {
+              if (process.env.LEGILIMENS_DEBUG) {
+                console.debug(`[gateway] External CLI response validated with schema`);
+              }
+              shortDescription = validation.data.shortDescription;
+              // Use buildFeatureList for consistent Legilimens-specific features
+              featureList = buildFeatureList({
+                dependencyName: displayName,
+                dependencyType,
+                staticBackupLink,
+                minimalMode: minimalModeRequested,
+                sourceType
+              });
+              aiToolUsed = aiResult.toolUsed;
+            } else {
+              // Schema validation failed, fall back immediately
+              if (process.env.LEGILIMENS_DEBUG) {
+                console.debug(`[gateway] Schema validation failed: ${validation.error}, using fallback`);
+              }
+              aiGenerationFailed = true;
+              aiGenerationError = `Schema validation failed: ${validation.error}`;
+              const fallbackContent = generateFallbackContent({
+                dependencyName: displayName,
+                dependencyType,
+                fetchedDocumentation: staticContent
+              });
+              shortDescription = fallbackContent.shortDescription;
+              featureList = buildFeatureList({
+                dependencyName: displayName,
+                dependencyType,
+                staticBackupLink,
+                minimalMode: minimalModeRequested,
+                sourceType
+              });
+              aiToolUsed = aiResult.toolUsed;
+            }
+          } else {
+            // No valid JSON found, fall back immediately
+            if (process.env.LEGILIMENS_DEBUG) {
+              console.debug(`[gateway] No valid JSON in external CLI response, using fallback`);
+            }
+            aiGenerationFailed = true;
+            aiGenerationError = 'No valid JSON in external CLI response';
+            const fallbackContent = generateFallbackContent({
+              dependencyName: displayName,
+              dependencyType,
+              fetchedDocumentation: staticContent
+            });
+            shortDescription = fallbackContent.shortDescription;
+            featureList = buildFeatureList({
+              dependencyName: displayName,
+              dependencyType,
+              staticBackupLink,
+              minimalMode: minimalModeRequested,
+              sourceType
+            });
+            aiToolUsed = aiResult.toolUsed;
+          }
         } else {
           if (process.env.LEGILIMENS_DEBUG) {
             console.debug(`[gateway] External CLI tools failed, using fallback content`);
@@ -603,7 +714,7 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
     sourceType
   });
 
-  const officialSourceUrl = deriveOfficialSource(normalizedIdentifier, deepWikiRepository);
+  const officialSourceUrl = deriveOfficialSource(normalizedIdentifier, deepWikiRepository, providedRepositoryUrl);
   const officialSourceLink = `[Official ${displayName} reference](${officialSourceUrl})`;
 
   const replacements = {
@@ -645,8 +756,6 @@ export const generateGatewayDoc: GenerateGatewayDoc = async (
 
   // Write static backup (already fetched earlier)
   await writeFile(staticBackupPath, `${staticContent}\n`, 'utf8');
-
-  const gatewayDocContent = await readFile(gatewayPath, 'utf8');
 
   const performanceMetrics = performanceTracker.finish();
   const performanceSummary = summarizePerformance(performanceMetrics);
