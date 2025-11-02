@@ -10,14 +10,6 @@ export interface WizardResult {
   error?: string;
 }
 
-const expandTilde = (value: string): string => {
-  if (typeof value !== 'string' || value.length === 0) {
-    return '';
-  }
-
-  return value.replace(/^~(?=\/|$)/, homedir());
-};
-
 export async function runClackWizard(): Promise<WizardResult> {
   intro('Legilimens Setup');
 
@@ -28,12 +20,12 @@ export async function runClackWizard(): Promise<WizardResult> {
     const existingKeys = await getAllApiKeys(['tavily', 'firecrawl', 'context7', 'refTools']);
     const existingInstallation = await detectExistingInstallation();
     const paths = getLlamaPaths();
-    const llamaCppInstalled = existsSync(paths.binaryPath) && existsSync(paths.modelPath);
+    const dmrInstalled = existingInstallation.found && existingInstallation.binaryPath === 'docker';
 
     // Build configuration status
     const configStatus = {
-      llamaCppInstalled: existingInstallation.found || llamaCppInstalled,
-      modelInstalled: existingInstallation.modelPath ? existsSync(existingInstallation.modelPath) : existsSync(paths.modelPath),
+      dmrInstalled: existingInstallation.found && existingInstallation.binaryPath === 'docker',
+      modelInstalled: existingInstallation.found && Boolean(existingInstallation.modelPath),
       tavilyKeyExists: Boolean(existingKeys.tavily || process.env.TAVILY_API_KEY),
       firecrawlKeyExists: Boolean(existingKeys.firecrawl || process.env.FIRECRAWL_API_KEY),
       context7KeyExists: Boolean(existingKeys.context7 || process.env.CONTEXT7_API_KEY),
@@ -42,12 +34,12 @@ export async function runClackWizard(): Promise<WizardResult> {
 
     // Show current configuration status
     const statusLines = [
-      configStatus.llamaCppInstalled
-        ? `✓ llama.cpp: Installed at ${existingInstallation.binaryPath || paths.binaryPath}`
-        : '✗ llama.cpp: Not installed',
+      configStatus.dmrInstalled
+        ? '✓ Docker Model Runner: Available (Docker + DMR enabled)'
+        : '✗ Docker Model Runner: Not available (install Docker Desktop)',
       configStatus.modelInstalled
-        ? `✓ Granite model: Installed at ${existingInstallation.modelPath || paths.modelPath}`
-        : '✗ Granite model: Not installed',
+        ? `✓ Granite model: ${existingInstallation.modelPath || paths.modelPath} (pulled)`
+        : '✗ Granite model: Not pulled (will download from Docker Hub)',
       configStatus.tavilyKeyExists
         ? '✓ Tavily API key: Configured'
         : '✗ Tavily API key: Not configured',
@@ -65,7 +57,7 @@ export async function runClackWizard(): Promise<WizardResult> {
     note(statusLines, 'Current Configuration');
 
     // If everything is configured, ask if user wants to update
-    const allConfigured = configStatus.llamaCppInstalled && configStatus.modelInstalled && configStatus.tavilyKeyExists;
+    const allConfigured = configStatus.dmrInstalled && configStatus.modelInstalled && configStatus.tavilyKeyExists;
     if (allConfigured) {
       const updateSettings = await confirm({
         message: 'Configuration complete. Update settings?',
@@ -83,70 +75,58 @@ export async function runClackWizard(): Promise<WizardResult> {
       }
     }
 
-    note(`Legilimens will automatically install llama.cpp and Granite 4.0 Micro GGUF model.\nConfiguration will be saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}.`, 'Welcome');
+    note(`Legilimens will automatically pull Granite 4.0 Micro model via Docker Model Runner.\nRequires: Docker Desktop installed and running.\nConfiguration will be saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}.`, 'Welcome');
 
-    // Handle llama.cpp installation
-    let llamaBin: string | undefined;
+    // Handle DMR installation
+    let dmrRuntime: string | undefined;
     let modelPath: string | undefined;
 
-    if (existingInstallation.found && existingInstallation.binaryPath) {
+    if (existingInstallation.found && existingInstallation.binaryPath === 'docker') {
       // Use existing installation
-      note(`Using existing llama.cpp installation at ${existingInstallation.binaryPath}`, 'Existing Installation Detected');
-      llamaBin = existingInstallation.binaryPath;
+      note('Using existing Docker Model Runner installation', 'Existing Installation Detected');
+      dmrRuntime = existingInstallation.binaryPath;
       modelPath = existingInstallation.modelPath;
 
-      // If model is missing, download it
-      if (!modelPath || !existsSync(modelPath)) {
+      // If model is missing, pull it
+      if (!modelPath) {
         const installSpinner = spinner();
-        installSpinner.start('Downloading Granite model');
+        installSpinner.start('Pulling Granite model from Docker Hub');
         const installResult = await ensureLlamaCppInstalled((msg) => {
           installSpinner.message(msg);
         });
-        installSpinner.stop('Granite model ready');
+        installSpinner.stop('Granite model pulled successfully');
         modelPath = installResult.modelPath;
       }
     } else {
-      // No existing installation detected - install llama.cpp and model
+      // No existing DMR installation detected - pull model
       const installSpinner = spinner();
-      installSpinner.start('Installing llama.cpp and Granite model');
+      installSpinner.start('Setting up Docker Model Runner and pulling Granite model');
 
       const installResult = await ensureLlamaCppInstalled((msg) => {
         installSpinner.message(msg);
       });
 
       if (!installResult.success) {
-        installSpinner.stop('Installation failed');
-        cancel(`Failed to install llama.cpp: ${installResult.error}`);
+        installSpinner.stop('DMR setup failed');
+        cancel(`Failed to setup Docker Model Runner: ${installResult.error}`);
         return { success: false, error: installResult.error };
       }
 
-      installSpinner.stop('llama.cpp and Granite model ready');
-      llamaBin = installResult.binaryPath;
+      installSpinner.stop('Docker Model Runner ready with Granite model');
+      dmrRuntime = installResult.binaryPath;
       modelPath = installResult.modelPath;
     }
 
-    // Validate that we have valid paths before continuing
-    if (!llamaBin || !modelPath) {
-      cancel('Installation completed but paths were not set correctly. Please report this issue.');
-      return { success: false, error: 'Invalid installation state: missing binary or model path' };
-    }
-
-    if (!existsSync(llamaBin)) {
-      cancel(`Binary path does not exist: ${llamaBin}`);
-      return { success: false, error: `Binary not found at expected location: ${llamaBin}` };
-    }
-
-    if (!existsSync(modelPath)) {
-      cancel(`Model path does not exist: ${modelPath}`);
-      return { success: false, error: `Model not found at expected location: ${modelPath}` };
+    // Validate that we have valid configuration before continuing
+    if (!dmrRuntime || !modelPath) {
+      cancel('Installation completed but configuration was not set correctly. Please report this issue.');
+      return { success: false, error: 'Invalid installation state: missing DMR runtime or model name' };
     }
 
     // Debug logging
     if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[wizard] Installation validated - binary: ${llamaBin}, model: ${modelPath}`);
-      console.debug(`[wizard] Binary exists: ${existsSync(llamaBin || '')}`);
-      console.debug(`[wizard] Model exists: ${existsSync(modelPath || '')}`);
-      console.debug(`[wizard] Will save localLlm: ${llamaBin && modelPath ? 'YES' : 'NO'}`);
+      console.debug(`[wizard] Installation validated - runtime: ${dmrRuntime}, model: ${modelPath}`);
+      console.debug(`[wizard] Will save localLlm: ${dmrRuntime && modelPath ? 'YES' : 'NO'}`);
     }
 
     // API Key prompts with pre-filled values
@@ -227,11 +207,11 @@ export async function runClackWizard(): Promise<WizardResult> {
         context7: context7Key ? String(context7Key) : (existingKeys.context7 || ''),
         refTools: refToolsKey ? String(refToolsKey) : (existingKeys.refTools || '')
       },
-      localLlm: llamaBin && modelPath ? {
+      localLlm: dmrRuntime && modelPath ? {
         enabled: true,
-        binaryPath: llamaBin,
-        modelPath: modelPath,
-        tokens: 128000,  // Granite 4.0 Micro context window
+        modelName: 'granite-4.0-micro:latest',
+        apiEndpoint: 'http://localhost:12434',
+        tokens: 8192,  // Granite 4.0 Micro context window
         threads: 8,      // Reasonable default for most systems
         temp: 0.7,       // Balance between creativity and consistency
         timeoutMs: 60000, // 60 seconds for generation tasks
@@ -271,10 +251,10 @@ export async function runClackWizard(): Promise<WizardResult> {
     saveSpinner.stop(`Configuration saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}`);
 
     // Export relevant env for this session (only if non-empty values were entered)
-    if (llamaBin && modelPath) {
+    if (dmrRuntime && modelPath) {
       process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
-      process.env.LEGILIMENS_LOCAL_LLM_BIN = String(llamaBin);
-      process.env.LEGILIMENS_LOCAL_LLM_MODEL = expandTilde(String(modelPath));
+      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = String(modelPath);
+      process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = 'http://localhost:12434';
     }
     // Tavily is auto-enabled in runtimeConfig when API key exists
     if (tavilyKey && String(tavilyKey).trim()) {
@@ -294,10 +274,8 @@ export async function runClackWizard(): Promise<WizardResult> {
     
     // Check if at least one AI source is configured (Local LLM OR Tavily)
     const hasLocalLlm = process.env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' &&
-                        process.env.LEGILIMENS_LOCAL_LLM_BIN &&
-                        process.env.LEGILIMENS_LOCAL_LLM_MODEL &&
-                        existsSync(process.env.LEGILIMENS_LOCAL_LLM_BIN) &&
-                        existsSync(process.env.LEGILIMENS_LOCAL_LLM_MODEL);
+                        process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME &&
+                        process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
     
     const hasTavily = Boolean(process.env.TAVILY_API_KEY);
     
@@ -306,32 +284,32 @@ export async function runClackWizard(): Promise<WizardResult> {
       if (process.env.LEGILIMENS_LOCAL_LLM_ENABLED !== 'true') {
         missingVars.push('LEGILIMENS_LOCAL_LLM_ENABLED');
       }
-      const resolvedBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
-      if (!resolvedBin || !existsSync(resolvedBin)) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_BIN');
+      const resolvedModelName = process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
+      if (!resolvedModelName) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL_NAME');
       }
-      const resolvedModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
-      if (!resolvedModel || !existsSync(resolvedModel)) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL');
+      const resolvedEndpoint = process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
+      if (!resolvedEndpoint) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_API_ENDPOINT');
       }
       if (!process.env.TAVILY_API_KEY) {
         missingVars.push('TAVILY_API_KEY');
       }
     } else if (hasLocalLlm && !hasTavily) {
       // Local LLM configured but not Tavily - this is OK, but validate Local LLM
-      const resolvedBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
-      if (!resolvedBin || !existsSync(resolvedBin)) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_BIN');
+      const resolvedModelName = process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
+      if (!resolvedModelName) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL_NAME');
       }
-      const resolvedModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
-      if (!resolvedModel || !existsSync(resolvedModel)) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL');
+      const resolvedEndpoint = process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
+      if (!resolvedEndpoint) {
+        missingVars.push('LEGILIMENS_LOCAL_LLM_API_ENDPOINT');
       }
     }
 
     if (missingVars.length > 0) {
       note(
-        `Local LLM configuration incomplete:\n- ${missingVars.join('\n- ')}\nRun setup again to re-attempt automatic fixes.`,
+        `Docker Model Runner configuration incomplete:\n- ${missingVars.join('\n- ')}\nRun setup again to re-attempt automatic fixes.`,
         'Configuration Warning'
       );
       const retry = await confirm({
@@ -348,7 +326,7 @@ export async function runClackWizard(): Promise<WizardResult> {
         return { success: false, error: `Missing configuration: ${missingVars.join(', ')}` };
       }
 
-      outro('Setup incomplete. Local LLM will remain disabled until configuration is corrected.');
+      outro('Setup incomplete. Docker Model Runner will remain disabled until configuration is corrected.');
       return { success: false, error: `Missing configuration: ${missingVars.join(', ')}` };
     }
 
