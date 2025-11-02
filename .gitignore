@@ -3,9 +3,14 @@ node_modules/
 .pnpm-store/
 dist/
 
-# Tooling caches
+# Tooling caches & AI artifacts
 .codex/
 .opencode/
+.claude/
+.claude-flow/
+.factory/
+.specify/
+.swarm/
 
 # Environment files
 .npmrc
@@ -28,3 +33,9 @@ backups/**
 
 # Large model files
 .temp-models/
+
+# Archive directories
+docs/.archive/
+
+# Standalone tools/editors
+claude-config-editor/
