@@ -42,6 +42,20 @@ Welcome! This is a lightweight entry point for AI assistants working on the Legi
 - `@legilimens/cli` - Interactive Clack/Ink-based UX
 - `@legilimens/harness-service` - Fastify HTTP service for parity testing
 
+## 📦 Monorepo Structure
+
+**IMPORTANT:** This repository contains reference to the GraphRAG system for integration planning.
+
+**Reference Directory:** `.resources/`
+- **`.resources/graphrag-system/`** - Symlinked reference to GraphRAG-with-SQLite-Vec repository
+- **Read-only** - For planning and reference purposes only
+- **Do NOT modify** files in `.resources/` or symlinked directories
+- See `.resources/CLAUDE.md` for detailed usage instructions
+
+**Phase 3 Integration (Q1 2026):**
+- GraphRAG will be integrated as `@legilimens/graphrag` workspace package
+- See `docs/PHASE-3-GRAPHRAG-INTEGRATION-PLAN.md` for complete roadmap
+
 ## Common Pitfalls
 
 ### Configuration & Setup

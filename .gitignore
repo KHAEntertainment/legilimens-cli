@@ -43,3 +43,6 @@ docs/.archive/**
 
 # Standalone tools/editors
 claude-config-editor/
+
+# Monorepo resources (symlinked reference projects)
+.resources/

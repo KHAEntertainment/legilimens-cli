@@ -40,7 +40,49 @@ packages/
 tests/integration/    # Cross-surface parity suite
 docs/                 # Constitution, SDP, template assets
 specs/001-docs-sdp-md # Active Speckit artefacts (spec/plan/tasks)
+.resources/           # Monorepo references (symlinked, read-only)
+├─ README.md          # Usage guide for reference directory
+├─ CLAUDE.md          # Claude Code instructions for .resources/
+├─ AGENTS.md          # AI agent instructions for .resources/
+└─ graphrag-system/   # Symlink to graphrag-with-sqlite_vec (read-only reference)
 ```
+
+## 📦 Monorepo Structure - IMPORTANT
+
+**Reference Directory:** `.resources/`
+
+This repository now contains a **read-only reference** to the GraphRAG-with-SQLite-Vec system for integration planning.
+
+### .resources/graphrag-system/ (Symlink)
+
+**Target:** `/Users/bbrenner/Documents/Scripting Projects/graphrag-with-sqlite_vec`
+**Purpose:** Reference for Phase 3 GraphRAG integration planning (Q1 2026)
+**Status:** **READ-ONLY** - DO NOT MODIFY
+
+### Critical Rules for .resources/
+
+**❌ DO NOT:**
+- Modify any files in `.resources/` or symlinked directories
+- Create new files in symlinked projects
+- Run git commands from within `.resources/`
+- Execute build/test/install commands in symlinked projects
+
+**✅ DO:**
+- Read documentation and source code for reference
+- Cross-check integration plans with GraphRAG specifications
+- Reference architecture decisions in your work
+- Cite source files in comments (e.g., "See .resources/graphrag-system/CONSTITUTION.md")
+
+**For detailed usage instructions:** See `.resources/AGENTS.md`
+
+### Phase 3 Integration (Q1 2026)
+
+GraphRAG will be integrated as `@legilimens/graphrag` workspace package:
+- **Planning:** `docs/PHASE-3-GRAPHRAG-INTEGRATION-PLAN.md` (10-week roadmap)
+- **Active work:** `packages/graphrag/` (future, Phase 3b)
+- **Reference:** `.resources/graphrag-system/` (read-only, for planning)
+
+**Integration approach:** Copy/adapt code from reference to `packages/graphrag/`, never modify `.resources/`
 
 ## Required Tooling
 - `pnpm` (Corepack-managed, workspace root `pnpm-workspace.yaml`)
