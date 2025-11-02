@@ -39,6 +39,7 @@ backups/**
 
 # Archive directories
 docs/.archive/
+docs/.archive/**
 
 # Standalone tools/editors
 claude-config-editor/

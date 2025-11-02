@@ -269,7 +269,7 @@ rm -rf ~/.legilimens
 
 For more detailed troubleshooting, see:
 - [Full README](../README.md#troubleshooting)
-- [Troubleshooting Notes](./troubleshooting-notes-10-12-25.md)
+- [Troubleshooting Notes](./guides/WORKING_CLI_SETUP.md)
 
 ## 9. Where to go next
 

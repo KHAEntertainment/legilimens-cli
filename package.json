@@ -14,13 +14,21 @@
     "test": "pnpm -r run test",
     "test:integration": "vitest run --config vitest.config.ts",
     "start:cli": "pnpm --filter @legilimens/cli start",
-    "start:harness": "pnpm --filter @legilimens/harness-service dev"
+    "start:harness": "pnpm --filter @legilimens/harness-service dev",
+    "audit:references": "node scripts/audit/references.mjs",
+    "audit:links": "markdown-link-check -q **/*.md -c .mlc.config.json",
+    "audit:duplicates": "node scripts/audit/duplicates.mjs",
+    "audit:scripts": "node scripts/audit/unreferenced-scripts.mjs",
+    "audit:assets": "node scripts/audit/assets-usage.mjs",
+    "audit:binaries": "node scripts/audit/binaries.mjs",
+    "audit:all": "pnpm run audit:references && pnpm run audit:links && pnpm run audit:duplicates && pnpm run audit:scripts && pnpm run audit:assets && pnpm run audit:binaries"
   },
   "devDependencies": {
     "@eslint/js": "^8.57.0",
     "@types/decompress": "^4.2.7",
     "@types/node": "^20.12.7",
     "eslint": "^8.57.0",
+    "markdown-link-check": "^3.14.1",
     "tsx": "^4.7.0",
     "typescript": "^5.4.2",
     "typescript-eslint": "^7.6.0",

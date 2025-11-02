@@ -251,6 +251,10 @@ The system automatically determines the appropriate MCP tool based on dependency
 
 Users only need to provide the dependency identifier (e.g., 'vercel/ai', 'lodash', 'https://stripe.com/docs') and the system automatically determines the appropriate MCP tool and reference URL. The constitution at `.specify/memory/constitution.md` governs template fidelity and terminology.
 
+## Contributing
+
+Contributions are welcome. Please see the [Maintenance Guide](docs/MAINTENANCE.md) for information on protected files and cleanup procedures.
+
 ## Reference Docs
 - `docs/sdp.md` – Product narrative, technical stack, and governance context.
 - `AGENTS.md` – Operational handbook for agents collaborating on Legilimens.

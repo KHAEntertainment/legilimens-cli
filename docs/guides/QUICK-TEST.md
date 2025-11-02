@@ -1,5 +1,23 @@
 # Quick Test Guide
 
+## Pre-Test Setup
+
+- [ ] All packages built successfully
+  ```bash
+  pnpm -w build
+  ```
+
+- [ ] Environment variables set
+  ```bash
+  export LEGILIMENS_DEBUG=true
+  export LEGILIMENS_AI_CLI_TOOL=claude
+  ```
+
+- [ ] Claude CLI available (if using external CLI)
+  ```bash
+  which claude  # Should show path
+  ```
+
 ## Verify the Fixes
 
 All fixes have been implemented and compiled. Here's how to test them:
@@ -73,6 +91,26 @@ If using external CLI (claude), you should see:
 ✔ Static backup: frameworks/static-backup/framework_joomla_cms.md
 ```
 
+## Additional Test Cases
+
+### Test Case 2: AG-UI
+- [ ] Enter: `AG-UI`
+- [ ] Verify detection normalizes to valid identifier
+- [ ] Verify fetch succeeds
+- [ ] Verify generation succeeds
+
+### Test Case 3: React (canonical)
+- [ ] Enter: `react`
+- [ ] Verify detection identifies as NPM
+- [ ] Verify fetch succeeds via Context7 or ref.tools
+- [ ] Verify generation succeeds
+
+### Test Case 4: vercel/ai (GitHub)
+- [ ] Enter: `vercel/ai`
+- [ ] Verify detection identifies as GitHub
+- [ ] Verify fetch succeeds via ref.tools → Firecrawl
+- [ ] Verify generation succeeds
+
 ## Troubleshooting
 
 ### Build Issues
@@ -102,6 +140,8 @@ If seeing llama logs or JSON errors:
 1. Verify environment variables are set: `echo $LLAMA_LOG_LEVEL`
 2. Check spawn includes env override in compiled code
 3. Use external CLI as fallback: `export LEGILIMENS_AI_CLI_TOOL=claude`
+
+If issues persist, use the report template from `docs/.archive/TEST-CHECKLIST.md`.
 
 ## Build Status
 
