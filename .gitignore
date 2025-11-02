@@ -11,6 +11,9 @@ dist/
 .factory/
 .specify/
 .swarm/
+.kilocode/
+openspec/
+specs/
 
 # Environment files
 .npmrc
