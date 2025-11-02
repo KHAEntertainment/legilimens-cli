@@ -21,3 +21,10 @@ pnpm-debug.log*
 coverage/
 *.tsbuildinfo
 *.log
+
+# Backup files
+*.backup.ts
+backups/**
+
+# Large model files
+.temp-models/
