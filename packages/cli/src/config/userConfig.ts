@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'f
 import type { CliToolName } from '@legilimens/core';
 import type { RuntimeConfig } from '@legilimens/core';
 import { saveApiKey, getApiKey, isKeychainAvailable, areKeysConfigured, validateStoredKeys, createStorageErrorMessage } from './secrets.js';
-import { detectExistingInstallation } from '../utils/llamaInstaller.js';
+import { detectExistingInstallation } from '../utils/dmrInstaller.js';
 
 export interface UserConfig {
   apiKeys: {
@@ -17,8 +17,10 @@ export interface UserConfig {
   aiCliCommandOverride?: string;
   localLlm?: {
     enabled: boolean;
-    binaryPath?: string;
-    modelPath?: string;
+    modelName?: string;
+    apiEndpoint?: string;
+    binaryPath?: string;  // Deprecated: Use modelName instead
+    modelPath?: string;   // Deprecated: Use modelName instead
     tokens?: number;
     threads?: number;
     temp?: number;
@@ -218,18 +220,38 @@ export const mergeWithEnvVars = async (
   // If env vars not set, populate from userConfig.localLlm
   const localLlmEnabled = env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' || 
                           (userConfig.localLlm?.enabled && !env.LEGILIMENS_LOCAL_LLM_ENABLED);
-  const localLlmBin = env.LEGILIMENS_LOCAL_LLM_BIN || userConfig.localLlm?.binaryPath;
-  const localLlmModel = env.LEGILIMENS_LOCAL_LLM_MODEL || userConfig.localLlm?.modelPath;
+  const localLlmModelName = env.LEGILIMENS_LOCAL_LLM_MODEL_NAME || userConfig.localLlm?.modelName;
+  const localLlmApiEndpoint = env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT || userConfig.localLlm?.apiEndpoint;
+  const localLlmBinaryPath = env.LEGILIMENS_LOCAL_LLM_BIN || userConfig.localLlm?.binaryPath;
+  const localLlmModelPath = env.LEGILIMENS_LOCAL_LLM_MODEL || userConfig.localLlm?.modelPath;
 
   // Set env vars from config if not already set (for getRuntimeConfig to pick up)
   if (!env.LEGILIMENS_LOCAL_LLM_ENABLED && userConfig.localLlm?.enabled) {
     env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
   }
+  
+  // Set new DMR env vars
+  if (!env.LEGILIMENS_LOCAL_LLM_MODEL_NAME && userConfig.localLlm?.modelName) {
+    env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = userConfig.localLlm.modelName;
+  }
+  if (!env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT && userConfig.localLlm?.apiEndpoint) {
+    env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = userConfig.localLlm.apiEndpoint;
+  }
+  
+  // Set legacy env vars for backward compatibility
   if (!env.LEGILIMENS_LOCAL_LLM_BIN && userConfig.localLlm?.binaryPath) {
     env.LEGILIMENS_LOCAL_LLM_BIN = userConfig.localLlm.binaryPath;
   }
   if (!env.LEGILIMENS_LOCAL_LLM_MODEL && userConfig.localLlm?.modelPath) {
     env.LEGILIMENS_LOCAL_LLM_MODEL = userConfig.localLlm.modelPath;
+  }
+  
+  // Backward compatibility: If new vars are set but legacy ones aren't, populate legacy
+  if (env.LEGILIMENS_LOCAL_LLM_MODEL_NAME && !env.LEGILIMENS_LOCAL_LLM_BIN) {
+    env.LEGILIMENS_LOCAL_LLM_BIN = 'docker';
+  }
+  if (env.LEGILIMENS_LOCAL_LLM_MODEL_NAME && !env.LEGILIMENS_LOCAL_LLM_MODEL) {
+    env.LEGILIMENS_LOCAL_LLM_MODEL = env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
   }
   
   // Auto-enable Tavily if API key exists and not explicitly disabled
@@ -252,8 +274,10 @@ export const mergeWithEnvVars = async (
     },
     localLlm: {
       enabled: Boolean(localLlmEnabled),
-      binaryPath: localLlmBin,
-      modelPath: localLlmModel,
+      modelName: localLlmModelName,
+      apiEndpoint: localLlmApiEndpoint,
+      binaryPath: localLlmBinaryPath,
+      modelPath: localLlmModelPath,
       tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
       threads: env.LEGILIMENS_LOCAL_LLM_THREADS ? parseInt(env.LEGILIMENS_LOCAL_LLM_THREADS, 10) : undefined,
       temp: env.LEGILIMENS_LOCAL_LLM_TEMP ? parseFloat(env.LEGILIMENS_LOCAL_LLM_TEMP) : undefined,
@@ -299,22 +323,31 @@ export const isSetupRequired = async (env: NodeJS.ProcessEnv = process.env): Pro
   // Check for local LLM configuration via env vars
   const envBinPath = expandTilde(env.LEGILIMENS_LOCAL_LLM_BIN);
   const envModelPath = expandTilde(env.LEGILIMENS_LOCAL_LLM_MODEL);
+  const envModelName = env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
+  
+  // DMR mode: docker + model name (no file path checks)
+  const isDmrMode = env.LEGILIMENS_LOCAL_LLM_BIN === 'docker' || Boolean(envModelName);
+  
   const localLlmEnvConfigured =
     env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' &&
-    Boolean(envBinPath) &&
-    Boolean(envModelPath) &&
-    existsSync(envBinPath) &&
-    existsSync(envModelPath);
+    (
+      // DMR mode: docker + (new model name OR legacy model name)
+      (isDmrMode && (Boolean(envModelName) || Boolean(envModelPath))) ||
+      // Legacy mode: file paths exist
+      (Boolean(envBinPath) && Boolean(envModelPath) && existsSync(envBinPath) && existsSync(envModelPath))
+    );
 
-  // Check for existing llama.cpp installation using robust detection
+  // Check for existing llama.cpp/DMR installation using robust detection
   const existingInstall = await detectExistingInstallation();
   const localLlmInstalled = existingInstall.found && 
                             Boolean(existingInstall.binaryPath) && 
                             Boolean(existingInstall.modelPath) &&
                             existingInstall.binaryPath !== undefined &&
                             existingInstall.modelPath !== undefined &&
-                            existsSync(existingInstall.binaryPath) &&
-                            existsSync(existingInstall.modelPath);
+                            // For DMR, binaryPath is 'docker' (not a file path)
+                            (existingInstall.binaryPath === 'docker' || existsSync(existingInstall.binaryPath)) &&
+                            // Model path for DMR is model name, not file path
+                            Boolean(existingInstall.modelPath);
 
   if (process.env.LEGILIMENS_DEBUG) {
     console.debug(`[isSetupRequired] setupCompleted=${userConfig.setupCompleted}, tavilyKeyRetrievable=${tavilyKeyRetrievable}, localLlmEnvConfigured=${localLlmEnvConfigured}, localLlmInstalled=${localLlmInstalled}`);

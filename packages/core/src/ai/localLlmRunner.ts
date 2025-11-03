@@ -56,6 +56,15 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
   }
 
+  // Guard: DMR-based execution not yet supported
+  if (bin === 'docker') {
+    const error = 'DMR-based generation is not yet supported. Local LLM execution via Docker Model Runner will be available in a future release. For now, use cloud AI providers (Tavily, etc.) or configure a traditional llama.cpp binary.';
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[localLlm] ${error}`);
+    }
+    return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
+  }
+
   // Use ~/.legilimens/temp/ instead of system tmpdir to avoid permission issues
   const tempDir = join(homedir(), '.legilimens', 'temp');
   const unique = `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;

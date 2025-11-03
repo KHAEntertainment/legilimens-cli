@@ -45,13 +45,16 @@ export interface AiCliConfig {
 }
 
 /**
- * Local LLM configuration. All of `enabled`, `binaryPath`, and `modelPath`
- * must be populated for local inference to be considered available.
+ * Local LLM configuration. For local inference to be considered available:
+ * - DMR mode: `enabled` + `modelName` + `apiEndpoint`
+ * - Legacy mode: `enabled` + `binaryPath` + `modelPath`
  */
 export interface LocalLlmConfig {
   enabled: boolean;
-  binaryPath?: string;
-  modelPath?: string;
+  modelName?: string;
+  apiEndpoint?: string;
+  binaryPath?: string;  // Deprecated: Use modelName instead
+  modelPath?: string;   // Deprecated: Use modelName instead
   tokens?: number;
   threads?: number;
   temp?: number;
@@ -133,6 +136,10 @@ export const getRuntimeConfig = (
 
   const localLlm: LocalLlmConfig = {
     enabled: (env.LEGILIMENS_LOCAL_LLM_ENABLED ?? 'false').toLowerCase() === 'true',
+    // Prefer new DMR env vars
+    modelName: env.LEGILIMENS_LOCAL_LLM_MODEL_NAME,
+    apiEndpoint: env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT,
+    // Fallback to legacy env vars for backward compatibility
     binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
     modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,
     tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
@@ -221,14 +228,27 @@ export const isAiGenerationEnabled = (config: RuntimeConfig): boolean => {
 };
 
 /**
- * Helper to check if the local LLM is fully configured
+ * Helper to check if the local LLM is fully configured.
+ * Accepts either DMR mode (modelName + apiEndpoint) or legacy mode (binaryPath + modelPath).
  */
 export const isLocalLlmEnabled = (config: RuntimeConfig): boolean => {
-  return Boolean(
-    config.localLlm?.enabled &&
-    config.localLlm?.binaryPath &&
-    config.localLlm?.modelPath
+  if (!config.localLlm?.enabled) {
+    return false;
+  }
+  
+  // DMR mode: modelName + apiEndpoint
+  const hasDmrConfig = Boolean(
+    config.localLlm.modelName &&
+    config.localLlm.apiEndpoint
   );
+  
+  // Legacy mode: binaryPath + modelPath
+  const hasLegacyConfig = Boolean(
+    config.localLlm.binaryPath &&
+    config.localLlm.modelPath
+  );
+  
+  return hasDmrConfig || hasLegacyConfig;
 };
 
 /**

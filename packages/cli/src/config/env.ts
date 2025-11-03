@@ -76,11 +76,11 @@ export const loadCliEnvironment = async (
     if (mergedConfig.localLlm.enabled !== undefined) {
       env.LEGILIMENS_LOCAL_LLM_ENABLED = String(mergedConfig.localLlm.enabled);
     }
-    if (mergedConfig.localLlm.binaryPath) {
-      env.LEGILIMENS_LOCAL_LLM_BIN = mergedConfig.localLlm.binaryPath;
+    if (mergedConfig.localLlm.modelName) {
+      env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = mergedConfig.localLlm.modelName;
     }
-    if (mergedConfig.localLlm.modelPath) {
-      env.LEGILIMENS_LOCAL_LLM_MODEL = mergedConfig.localLlm.modelPath;
+    if (mergedConfig.localLlm.apiEndpoint) {
+      env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = mergedConfig.localLlm.apiEndpoint;
     }
     if (mergedConfig.localLlm.tokens !== undefined) {
       env.LEGILIMENS_LOCAL_LLM_TOKENS = String(mergedConfig.localLlm.tokens);

@@ -1,6 +1,6 @@
 import { intro, outro, text, confirm, select, spinner, note, cancel } from '@clack/prompts';
 import { saveUserConfig, loadUserConfig, type UserConfig } from '../config/userConfig.js';
-import { ensureLlamaCppInstalled, getLlamaPaths, detectExistingInstallation } from '../utils/llamaInstaller.js';
+import { ensureDmrInstalled, getDmrPaths, detectExistingInstallation } from '../utils/dmrInstaller.js';
 import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
@@ -19,7 +19,7 @@ export async function runClackWizard(): Promise<WizardResult> {
     // Check existing configuration
     const existingKeys = await getAllApiKeys(['tavily', 'firecrawl', 'context7', 'refTools']);
     const existingInstallation = await detectExistingInstallation();
-    const paths = getLlamaPaths();
+    const paths = getDmrPaths();
     const dmrInstalled = existingInstallation.found && existingInstallation.binaryPath === 'docker';
 
     // Build configuration status
@@ -91,7 +91,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       if (!modelPath) {
         const installSpinner = spinner();
         installSpinner.start('Pulling Granite model from Docker Hub');
-        const installResult = await ensureLlamaCppInstalled((msg) => {
+        const installResult = await ensureDmrInstalled((msg) => {
           installSpinner.message(msg);
         });
         installSpinner.stop('Granite model pulled successfully');
@@ -102,7 +102,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       const installSpinner = spinner();
       installSpinner.start('Setting up Docker Model Runner and pulling Granite model');
 
-      const installResult = await ensureLlamaCppInstalled((msg) => {
+      const installResult = await ensureDmrInstalled((msg) => {
         installSpinner.message(msg);
       });
 
@@ -253,7 +253,7 @@ export async function runClackWizard(): Promise<WizardResult> {
     // Export relevant env for this session (only if non-empty values were entered)
     if (dmrRuntime && modelPath) {
       process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
-      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = String(modelPath);
+      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = 'granite-4.0-micro:latest';
       process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = 'http://localhost:12434';
     }
     // Tavily is auto-enabled in runtimeConfig when API key exists

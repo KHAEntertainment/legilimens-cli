@@ -96,9 +96,10 @@ async function checkModelExists(modelName: string): Promise<boolean> {
  * Detect existing Docker Model Runner installation
  */
 export async function detectExistingInstallation(): Promise<ExistingInstallation> {
-  // Check environment variables first
+  // Check environment variables first (prefer new DMR vars)
   const envBin = process.env.LEGILIMENS_LOCAL_LLM_BIN;
-  const envModel = process.env.LEGILIMENS_LOCAL_LLM_MODEL;
+  const envModelName = process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
+  const envModel = envModelName || process.env.LEGILIMENS_LOCAL_LLM_MODEL;
 
   // Always validate Docker and DMR even when LEGILIMENS_LOCAL_LLM_BIN==='docker'
   // Validate Docker installation
