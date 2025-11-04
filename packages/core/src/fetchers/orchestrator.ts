@@ -90,7 +90,6 @@ export async function fetchDocumentation(
     };
   }
 
-  // NPM fallback chain: Context7 → Firecrawl
   if (dependencyType === 'npm') {
     const normalizedId = normalizeIdentifierForUrl(identifier, 'npm');
     const context7Config = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.context7 };
