@@ -197,6 +197,56 @@ export async function runClackWizard(): Promise<WizardResult> {
       return { success: false };
     }
 
+    // Ask if user wants to customize DMR settings or use defaults
+    let modelName = 'granite-4.0-micro:latest';
+    let apiEndpoint = 'http://localhost:12434';
+    
+    if (dmrRuntime && modelPath) {
+      const useDefaults = await confirm({
+        message: 'Use default DMR settings (model: granite-4.0-micro:latest, endpoint: http://localhost:12434)?',
+        initialValue: true,
+      });
+
+      if (useDefaults === false) {
+        // Get user custom values with existing config as initial values if available
+        const existingModelName = current.localLlm?.modelName || 'granite-4.0-micro:latest';
+        const existingApiEndpoint = current.localLlm?.apiEndpoint || 'http://localhost:12434';
+        
+        const modelNameInput = await text({
+          message: 'Enter DMR model name',
+          initialValue: existingModelName,
+          placeholder: 'e.g., granite-4.0-micro:latest'
+        });
+
+        if (typeof modelNameInput === 'symbol') {
+          cancel('Setup cancelled');
+          return { success: false };
+        }
+        
+        modelName = modelNameInput;
+
+        const apiEndpointInput = await text({
+          message: 'Enter DMR API endpoint',
+          initialValue: existingApiEndpoint,
+          placeholder: 'e.g., http://localhost:12434'
+        });
+
+        if (typeof apiEndpointInput === 'symbol') {
+          cancel('Setup cancelled');
+          return { success: false };
+        }
+        
+        apiEndpoint = apiEndpointInput;
+      } else if (typeof useDefaults === 'symbol') {
+        cancel('Setup cancelled');
+        return { success: false };
+      } else {
+        // Keep defaults but preserve any previously customized values if they exist
+        modelName = current.localLlm?.modelName || modelName;
+        apiEndpoint = current.localLlm?.apiEndpoint || apiEndpoint;
+      }
+    }
+
     // Only update keys that changed (keep existing if prompt was empty)
     const cfg: UserConfig = {
       ...current,
@@ -209,8 +259,8 @@ export async function runClackWizard(): Promise<WizardResult> {
       },
       localLlm: dmrRuntime && modelPath ? {
         enabled: true,
-        modelName: 'granite-4.0-micro:latest',
-        apiEndpoint: 'http://localhost:12434',
+        modelName: modelName,
+        apiEndpoint: apiEndpoint,
         tokens: 8192,  // Granite 4.0 Micro context window
         threads: 8,      // Reasonable default for most systems
         temp: 0.7,       // Balance between creativity and consistency
@@ -253,8 +303,8 @@ export async function runClackWizard(): Promise<WizardResult> {
     // Export relevant env for this session (only if non-empty values were entered)
     if (dmrRuntime && modelPath) {
       process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
-      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = 'granite-4.0-micro:latest';
-      process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = 'http://localhost:12434';
+      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = modelName;
+      process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = apiEndpoint;
     }
     // Tavily is auto-enabled in runtimeConfig when API key exists
     if (tavilyKey && String(tavilyKey).trim()) {

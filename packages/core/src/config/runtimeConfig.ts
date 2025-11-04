@@ -53,6 +53,7 @@ export interface LocalLlmConfig {
   enabled: boolean;
   modelName?: string;
   apiEndpoint?: string;
+  enginePath?: string;
   binaryPath?: string;  // Deprecated: Use modelName instead
   modelPath?: string;   // Deprecated: Use modelName instead
   tokens?: number;      // Context window size (deprecated for output control)
@@ -140,6 +141,7 @@ export const getRuntimeConfig = (
     // Prefer new DMR env vars
     modelName: env.LEGILIMENS_LOCAL_LLM_MODEL_NAME,
     apiEndpoint: env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT,
+    enginePath: env.LEGILIMENS_LOCAL_LLM_ENGINE_PATH ?? 'engines/llama.cpp/v1/chat/completions', // Default path
     // Fallback to legacy env vars for backward compatibility
     binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
     modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,

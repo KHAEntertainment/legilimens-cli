@@ -107,16 +107,15 @@ describe('Fetcher orchestrator', () => {
       vi.mocked(detector.detectDependencyType).mockReturnValue('npm');
     });
 
-    it('tries Context7 → ref.tools → Firecrawl', async () => {
+    it('tries Context7 → Firecrawl', async () => {
       vi.mocked(context7.fetchFromContext7).mockResolvedValue(failureResult);
-      vi.mocked(refTools.fetchFromRefTools).mockResolvedValue(failureResult);
       vi.mocked(firecrawl.fetchFromFirecrawl).mockResolvedValue(successResult);
 
       const result = await fetchDocumentation('lodash', mockRuntimeConfig);
 
       expect(result.success).toBe(true);
       expect(context7.fetchFromContext7).toHaveBeenCalled();
-      expect(refTools.fetchFromRefTools).toHaveBeenCalled();
+      expect(refTools.fetchFromRefTools).not.toHaveBeenCalled();
       expect(firecrawl.fetchFromFirecrawl).toHaveBeenCalled();
     });
 
@@ -179,7 +178,7 @@ describe('Fetcher orchestrator', () => {
 
       expect(description).toContain('NPM');
       expect(description).toContain('Context7');
-      expect(description).toContain('ref.tools');
+      expect(description).not.toContain('ref.tools');
     });
 
     it('describes URL strategy', () => {

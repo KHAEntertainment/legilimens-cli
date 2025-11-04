@@ -25,7 +25,7 @@ export interface SearchResult {
  * Search for documentation sources using Tavily
  * Uses domain filtering and developer-focused language for best results
  */
-export async function searchPreferredSources(query: string, dependencyName: string): Promise<SearchResult> {
+export async function searchPreferredSources(identifierOrName: string): Promise<SearchResult> {
   const rc = getRuntimeConfig();
   if (!rc.tavily?.enabled || !rc.tavily.apiKey) {
     return { items: [] };
@@ -36,7 +36,7 @@ export async function searchPreferredSources(query: string, dependencyName: stri
   // Strategy: Leverage Tavily's LLM to intelligently evaluate source authority
   // Tavily will analyze all available sources and rank by documentation quality
   // This allows discovery of official docs, Context7 indexes, and GitHub repos
-  const searchQuery = `Find the most definitive source of documentation for "${dependencyName}" on Context7, GitHub, or its own dedicated website, ranked in order of authority. Prioritize Context7 for popular packages, GitHub for open-source projects, and official websites for proprietary tools. Return the primary documentation URL and source type.`;
+  const searchQuery = `Find the most definitive source of documentation for "${identifierOrName}" on Context7, GitHub, or its own dedicated website, ranked in order of authority. Prioritize Context7 for popular packages, GitHub for open-source projects, and official websites for proprietary tools. Return the primary documentation URL and source type.`;
   
   const searchOptions: TavilySearchOptions = {
     includeAnswer: true,  // Tavily's LLM will provide structured answer

@@ -31,8 +31,9 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
   }
   const modelName = rc.localLlm?.modelName as string | undefined;
   const apiEndpoint = rc.localLlm?.apiEndpoint as string | undefined;
+  const enginePath = rc.localLlm?.enginePath as string | undefined;
   if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[localLlm] Configuration: enabled=${rc.localLlm?.enabled}, modelName=${modelName}, apiEndpoint=${apiEndpoint}`);
+    console.debug(`[localLlm] Configuration: enabled=${rc.localLlm?.enabled}, modelName=${modelName}, apiEndpoint=${apiEndpoint}, enginePath=${enginePath}`);
   }
   
   // Better error messages for missing configuration
@@ -52,8 +53,8 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
   }
 
-  // DMR endpoint
-  const DMR_ENDPOINT = `${apiEndpoint}/engines/llama.cpp/v1/chat/completions`;
+  // DMR endpoint - use configurable engine path with default fallback
+  const DMR_ENDPOINT = `${apiEndpoint}/${enginePath || 'engines/llama.cpp/v1/chat/completions'}`;
   
   // Enforce JSON-only output with optional schema hint
   let wrapped = `You MUST respond with ONLY a valid JSON object. No explanations, no prose, no markdown - just pure JSON.\n\n`;
