@@ -2,13 +2,6 @@ import { tavily, type TavilySearchOptions } from '@tavily/core';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
 
-interface TavilyResultItem {
-  title: string;
-  url: string;
-  score?: number;
-  content?: string;
-}
-
 export interface SearchResultItem {
   title: string;
   url: string;
@@ -29,8 +22,8 @@ export interface SearchResult {
 }
 
 /**
- * Search for documentation sources using Tavily (GitHub and official docs only).
- * Context7 is searched separately in Phase 5, so Tavily focuses on sources Context7 doesn't index.
+ * Search for documentation sources using Tavily
+ * Uses domain filtering and developer-focused language for best results
  */
 export async function searchPreferredSources(identifierOrName: string): Promise<SearchResult> {
   const rc = getRuntimeConfig();
@@ -40,47 +33,20 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
 
   const client = tavily({ apiKey: rc.tavily.apiKey });
   
-  // Strategy: Leverage Tavily's LLM to find GitHub repos and official docs.
-  // Context7 has already been searched (Phase 5), so Tavily focuses on sources Context7 doesn't index.
-  // This allows discovery of GitHub repositories and official documentation websites.
-  const searchQuery = `Find the official GitHub repository or documentation website for "${identifierOrName}". Focus on GitHub for open-source projects and official documentation websites for proprietary tools. Return the primary documentation URL and source type (github or official).`;
+  // Strategy: Leverage Tavily's LLM to intelligently evaluate source authority
+  // Tavily will analyze all available sources and rank by documentation quality
+  // This allows discovery of official docs, Context7 indexes, and GitHub repos
+  const searchQuery = `Find the most definitive source of documentation for "${identifierOrName}" on Context7, GitHub, or its own dedicated website, ranked in order of authority. Prioritize Context7 for popular packages, GitHub for open-source projects, and official websites for proprietary tools. Return the primary documentation URL and source type.`;
   
   const searchOptions: TavilySearchOptions = {
     includeAnswer: true,  // Tavily's LLM will provide structured answer
-    excludeDomains: ['context7.com', 'context7.ai'],
     maxResults: rc.tavily.maxResults ?? 10,  // Increase to get more candidates for LLM evaluation
     timeout: rc.tavily.timeoutMs ?? 15000,
   };
 
-  // Log Tavily query initiation
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Tavily query: "${searchQuery}"`);
-    console.debug(`[webSearch] Search options: maxResults=${searchOptions.maxResults}, timeout=${searchOptions.timeout}ms, excludeDomains=${JSON.stringify(searchOptions.excludeDomains)}`);
-  }
+  const response = await client.search(searchQuery, searchOptions);
 
-  let response;
-  try {
-    response = await client.search(searchQuery, searchOptions);
-  } catch (error) {
-    // Log error and return empty result to allow pipeline fallback
-    if (process.env.LEGILIMENS_DEBUG) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.debug(`[webSearch] Tavily API error: ${errorMessage}`);
-    }
-    return { items: [] };
-  }
-
-  // Log Tavily response
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Tavily response received: ${response.results?.length || 0} results`);
-    console.debug(`[webSearch] Tavily answer: ${response.answer?.slice(0, 150) || 'none'}...`);
-    if (response.results && response.results.length > 0) {
-      const topRaw = response.results.slice(0, 3).map((r: TavilyResultItem) => `${r.title} (${r.score?.toFixed(2)})`).join(', ');
-      console.debug(`[webSearch] Top 3 raw results: ${topRaw}`);
-    }
-  }
-
-  const items: SearchResultItem[] = (response.results || []).map((r: TavilyResultItem) => ({
+  const items: SearchResultItem[] = (response.results || []).map((r: any) => ({
     title: r.title,
     url: r.url,
     score: r.score,
@@ -88,63 +54,28 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
     sourceHint: classifyUrl(r.url),
   }));
 
-  // Log result classification
-  if (process.env.LEGILIMENS_DEBUG) {
-    const githubCount = items.filter(i => i.sourceHint === 'github').length;
-    const officialCount = items.filter(i => i.sourceHint === 'official').length;
-    const otherCount = items.filter(i => i.sourceHint === 'other').length;
-    console.debug(`[webSearch] Classification: ${githubCount} GitHub, ${officialCount} official, ${otherCount} other`);
-    if (items.length > 0) {
-      const topClassified = items.slice(0, 3).map(i => `${i.title} [${i.sourceHint}] (${i.score?.toFixed(2)})`).join(', ');
-      console.debug(`[webSearch] Top 3 classified: ${topClassified}`);
-    }
-  }
-
   // Extract GitHub owner/repo from Tavily's answer if available
   const suggestedIdentifier = extractGitHubIdentifier(response.answer);
   const sourceRecommendation = parseSourceRecommendation(response.answer);
 
-  // Log source recommendation extraction
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Source recommendation: ${sourceRecommendation.sourceType} (${sourceRecommendation.confidence})`);
-    console.debug(`[webSearch] Recommended URL: ${sourceRecommendation.primaryUrl || 'none'}`);
-  }
-
   // Rank preference based on documentation quality and coverage:
-  // Context7 is excluded from Tavily and searched earlier in the pipeline (Phase 5)
-  // 1. GitHub: Primary source for open-source projects
-  // 2. Official: Authoritative but may be incomplete or outdated
-  // 3. DeepWiki: Good for GitHub repos
-  // 4. Discussion: Community content, less authoritative than official sources
+  // 1. Context7: Indexes all popular packages with high-quality docs
+  // 2. GitHub: Primary source for open-source projects
+  // 3. Official: Authoritative but may be incomplete or outdated
+  // 4. DeepWiki: Good for GitHub repos but less comprehensive than Context7
+  // 5. Discussion: Community content, less authoritative than official sources
   const weight = (s?: SearchResultItem['sourceHint']) => {
     switch (s) {
-      case 'github': return 95;     // Highest priority - open-source projects
-      case 'official': return 90;   // Second priority - official documentation
-      case 'deepwiki': return 85;   // Third priority - DeepWiki indexes
-      case 'discussion': return 60; // Fourth priority - community/forum discussions
+      case 'context7': return 100;  // Highest priority - indexes all popular packages
+      case 'github': return 95;     // Second priority - open-source projects
+      case 'official': return 90;   // Third priority - official documentation
+      case 'deepwiki': return 85;   // Fourth priority - DeepWiki indexes
+      case 'discussion': return 60; // Fifth priority - community/forum discussions
       default: return 50;           // Lowest priority - other sources
     }
   };
 
-  // Filter to authoritative sources first (github/official)
-  const authoritativeCandidates = items.filter(i => i.sourceHint === 'github' || i.sourceHint === 'official');
-
-  // If we have authoritative sources, sort and return those
-  // Otherwise, fall back to all candidates
-  const candidates = authoritativeCandidates.length > 0 ? authoritativeCandidates : items;
-  const sortedItems = candidates.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
-
-  // Log ranking and sorting decisions
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Ranking applied: GitHub(95) > Official(90) > DeepWiki(85) > Discussion(60) > Other(50)`);
-    if (sortedItems.length > 0) {
-      const topSorted = sortedItems.slice(0, 3).map(i => 
-        `${i.title} [${i.sourceHint}] (weighted: ${(weight(i.sourceHint) + (i.score ?? 0)).toFixed(2)})`
-      ).join(', ');
-      console.debug(`[webSearch] Top 3 sorted: ${topSorted}`);
-    }
-    console.debug(`[webSearch] Suggested identifier: ${suggestedIdentifier || 'none'}`);
-  }
+  const sortedItems = items.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
 
   return {
     items: sortedItems,
@@ -199,7 +130,7 @@ function parseSourceRecommendation(answer?: string): {
         : 'medium';
       
       if (process.env.LEGILIMENS_DEBUG) {
-        console.debug(`[webSearch] Parsed JSON recommendation: ${sourceType} (${confidence}), URL: ${parsed.primaryUrl || 'none'}`);
+        console.debug(`[webSearch] Parsed JSON recommendation: ${sourceType} (${confidence})`);
       }
       
       return {
@@ -211,17 +142,10 @@ function parseSourceRecommendation(answer?: string): {
   }
   
   // Strategy 2: Fallback to regex-based heuristics
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] JSON parsing failed, using regex heuristics for source recommendation`);
-  }
-  
   const lowerAnswer = answer.toLowerCase();
   
   // Check for Context7 recommendation
   if (lowerAnswer.includes('context7') && (lowerAnswer.includes('most authoritative') || lowerAnswer.includes('best source') || lowerAnswer.includes('primary source'))) {
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[webSearch] Regex detected Context7 recommendation in answer`);
-    }
     const context7Match = answer.match(/context7\.com\/([^\s]+)/);
     return {
       sourceType: 'context7',
@@ -232,9 +156,6 @@ function parseSourceRecommendation(answer?: string): {
   
   // Check for GitHub recommendation
   if (lowerAnswer.includes('github') && (lowerAnswer.includes('primary source') || lowerAnswer.includes('official repository'))) {
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[webSearch] Regex detected GitHub recommendation in answer`);
-    }
     const githubMatch = answer.match(/github\.com\/([a-zA-Z0-9_-]+\/[a-zA-Z0-9_.-]+)/);
     return {
       sourceType: 'github',
@@ -245,9 +166,6 @@ function parseSourceRecommendation(answer?: string): {
   
   // Check for official website recommendation
   if (lowerAnswer.includes('official') && (lowerAnswer.includes('website') || lowerAnswer.includes('documentation'))) {
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[webSearch] Regex detected official website recommendation in answer`);
-    }
     const urlMatch = answer.match(/https?:\/\/[^\s]+/);
     return {
       sourceType: 'official',
@@ -264,10 +182,6 @@ function parseSourceRecommendation(answer?: string): {
       primaryUrl: urlMatch[0],
       confidence: 'low'
     };
-  }
-  
-  if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] No source recommendation found in Tavily answer`);
   }
   
   return { sourceType: 'unknown', confidence: 'low' };

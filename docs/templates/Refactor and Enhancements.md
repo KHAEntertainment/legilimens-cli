@@ -39,10 +39,17 @@ Let's plan an overview option before retrieval begins in case we need to correct
 
 ### Core Changes:
 
+<<<<<<< HEAD
 1) We need to be able to uninstall the chosen LLM via the CLI.
 2) We need a dashboard/status panel on the main TUI welcome screen,  under the Ascii art, with things like DMR Status, Local Model Status, Tavily, Firecrawl, Ref and Context7 status, etc. If anything is missing a reminder for the user to go into setup to complete it. If everything is detected, a status message saying "all dependencies detected: ready to generate documents" or something like that.
 3) We already put up some guardrails to prevent duplicate installs, so let's just review those and make sure they are working as expected.
 4) We are going to offer a choice of LLMs to choose from, with simple descriptions for each one.
+=======
+1) We need to be able to unisntall the chosen LLM via the CLI. 
+2) We need a dashboard/status panel on the main TUI welcome screen,  under the Ascii art, with things like DMR Status, Local Model Status, Tavily, Firecrawl, Ref and Context7 status, etc. If anything is missing a reminder for the user to go into setup to complete it. If everythign is detected, a status message saying "all dependencies detected: ready to generate documents" or something like that. 
+3) We already put up some guardrails to prevent duplicate installs, so let's just review those and make sure they are working as expected.
+4) We are going to offer a choice of LLM's to choose from, with simple descriptions for each one. 
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
 - IBM Granite 4 Micro - Current Default. Compact Install Size, 131k Context Window, Great Reasoning and Tool Use Abilities. | https://huggingface.co/ibm-granite/granite-4.0-micro
 - Phi-4 - The original default. Larger Install Size, Possible Better Reasoning and Tool Use Abilities but Small Context Window. | https://huggingface.co/QuantFactory/phi-4-GGUF
 - Qwen 2.5 1.5B - Most Compact Install Size. Recommended for older hardware or space-conscious installs. Good reasoning and tool use abilities. | https://huggingface.co/Qwen/Qwen2.5-1B-Instruct
@@ -57,7 +64,11 @@ Let's plan an overview option before retrieval begins in case we need to correct
 | **Phi-4** | ~6-8GB | Unknown | 16K | Maximum quality |
 
 ### Debug Issues
+<<<<<<< HEAD
 1) The handoff of the tasks from the local LLM to installed CLI utilities like Claude-Code, Gemini CLI or Codex never seem to work. We need to re-evaluate how this handoff is happening and verify that the system is using valid non-interactive commands to control these utilities. Here are all the PROPER commands and arguments for Codex, Gemini and Claude-Code (The Gemini Commands should piggyback over to Qwen as well, just change the command from gemini to qwen) - see [CLI Utility Headless - Non-Interactive.md](./## CLI Utility Headless - Non-Interactive.md) 
+=======
+1) The handoff of the tasks from the local LLM to installed CLI utilities like Claude-Code, Gemini CLI or Codex never seem to work. We need to re-evaluate how this handoff is happening and verify that the system is using valid non-interactive commands to control these utilities. Here are all the PROPER commands and arguments for Codex, Gemini and Claude-Code (The Gemini Commands should piggyback over to Qwen as well, just change the command from gemini to qwen) '/Users/bbrenner/Documents/Scripting Projects/doc-gateway-cli/docs/templates/## CLI Utility Headless - Non-Interactive.md' 
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
 
 
 ## Future Proofing & QOL Improvements
@@ -88,7 +99,11 @@ Similar examples could be appended to AGENTS.md, Gemini.md, .cursorrules, warp.m
 - https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview.md
 
 3) Major Function Addition: local enhanced graphRAG
+<<<<<<< HEAD
 ## Important! We are not implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
+=======
+## Important! We are not planning and implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
 
 I made a typescript based advanced graphRAG solution with Vercel AI SDK and llama.cpp support tailored to be incorporated into this project as well as operate standalone. We will work on this as it's own dedicated phase/plan but be aware that it will be the next step after these modifications. 
 To get more knowledge about this project: https://deepwiki.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk
@@ -101,5 +116,10 @@ Actual Repo: https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-ver
   - Vector Embeddings - https://huggingface.co/SciPhi/Triplex
   - Specialized Retrieval (optional) - 
   - MCP Attendant - Granite-4 Micro (same as legilimens)
+<<<<<<< HEAD
+=======
+
+
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
 
 

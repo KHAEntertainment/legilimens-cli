@@ -4,7 +4,11 @@
 Lightweight Legilimens summary for Supabase CLI (other).
 
 ## Short Description
+<<<<<<< HEAD
 Supabase CLI is a command-line tool that provides essential functionality for modern development. This gateway provides comprehensive documentation and integration guidance.
+=======
+Supabase CLI is a other that provides essential functionality for modern development. This gateway provides comprehensive documentation and integration guidance.
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
 
 ## Key Features
 - Curated MCP prompts accelerate work with Supabase CLI (Static backup for unknown sources).
@@ -32,4 +36,8 @@ Static backup is your primary reference for this dependency.
 [./static-backup/other_supabase_cli.md](./static-backup/other_supabase_cli.md)
 
 ## Official Source
+<<<<<<< HEAD
 [Official Supabase CLI reference](https://supabase.com/docs/guides/cli)
+=======
+[Official Supabase CLI reference](Supabase CLI)
+>>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
