@@ -55,7 +55,8 @@ export interface LocalLlmConfig {
   apiEndpoint?: string;
   binaryPath?: string;  // Deprecated: Use modelName instead
   modelPath?: string;   // Deprecated: Use modelName instead
-  tokens?: number;
+  tokens?: number;      // Context window size (deprecated for output control)
+  outputTokens?: number; // Maximum output tokens (recommended)
   threads?: number;
   temp?: number;
   timeoutMs?: number;
@@ -143,6 +144,7 @@ export const getRuntimeConfig = (
     binaryPath: env.LEGILIMENS_LOCAL_LLM_BIN,
     modelPath: env.LEGILIMENS_LOCAL_LLM_MODEL,
     tokens: env.LEGILIMENS_LOCAL_LLM_TOKENS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_TOKENS, 10) : undefined,
+    outputTokens: env.LEGILIMENS_LOCAL_LLM_OUTPUT_TOKENS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_OUTPUT_TOKENS, 10) : undefined,
     threads: env.LEGILIMENS_LOCAL_LLM_THREADS ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_THREADS, 10) : undefined,
     temp: env.LEGILIMENS_LOCAL_LLM_TEMP ? Number.parseFloat(env.LEGILIMENS_LOCAL_LLM_TEMP) : undefined,
     timeoutMs: env.LEGILIMENS_LOCAL_LLM_TIMEOUT ? Number.parseInt(env.LEGILIMENS_LOCAL_LLM_TIMEOUT, 10) : undefined,
@@ -229,26 +231,19 @@ export const isAiGenerationEnabled = (config: RuntimeConfig): boolean => {
 
 /**
  * Helper to check if the local LLM is fully configured.
- * Accepts either DMR mode (modelName + apiEndpoint) or legacy mode (binaryPath + modelPath).
+ * Currently only supports DMR mode (modelName + apiEndpoint).
+ * Legacy mode (binaryPath + modelPath) is not supported until reintroduced in localLlmRunner.
  */
 export const isLocalLlmEnabled = (config: RuntimeConfig): boolean => {
   if (!config.localLlm?.enabled) {
     return false;
   }
   
-  // DMR mode: modelName + apiEndpoint
-  const hasDmrConfig = Boolean(
+  // DMR mode: modelName + apiEndpoint (required)
+  return Boolean(
     config.localLlm.modelName &&
     config.localLlm.apiEndpoint
   );
-  
-  // Legacy mode: binaryPath + modelPath
-  const hasLegacyConfig = Boolean(
-    config.localLlm.binaryPath &&
-    config.localLlm.modelPath
-  );
-  
-  return hasDmrConfig || hasLegacyConfig;
 };
 
 /**

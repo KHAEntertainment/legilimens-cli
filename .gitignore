@@ -46,3 +46,6 @@ claude-config-editor/
 
 # Monorepo resources (symlinked reference projects)
 .resources/
+
+# Letta agent artifacts
+.letta/

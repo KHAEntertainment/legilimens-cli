@@ -56,10 +56,10 @@ describe('runtimeConfig', () => {
       expect(config.localLlm?.apiEndpoint).toBeUndefined();
     });
 
-    it('supports legacy LEGILIMENS_LOCAL_LLM_MODEL env var', () => {
+    it('supports LEGILIMENS_LOCAL_LLM_MODEL_NAME env var', () => {
       const env = {
         LEGILIMENS_LOCAL_LLM_ENABLED: 'true',
-        LEGILIMENS_LOCAL_LLM_MODEL: 'granite-4.0-micro:latest',
+        LEGILIMENS_LOCAL_LLM_MODEL_NAME: 'granite-4.0-micro:latest',
         LEGILIMENS_LOCAL_LLM_API_ENDPOINT: 'http://localhost:12434',
       };
 

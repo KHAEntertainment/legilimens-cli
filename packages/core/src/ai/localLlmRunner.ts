@@ -1,7 +1,3 @@
-import { spawn } from 'child_process';
-import { homedir } from 'os';
-import { writeFileSync, unlinkSync, mkdirSync } from 'fs';
-import { join } from 'path';
 import type { z } from 'zod';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
@@ -33,42 +29,31 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
     }
     return { success: false, raw: '', error: 'Local LLM disabled', attempts: 0, durationMs: 0 };
   }
-  const bin = rc.localLlm?.binaryPath as string | undefined;
-  const model = rc.localLlm?.modelPath as string | undefined;
+  const modelName = rc.localLlm?.modelName as string | undefined;
+  const apiEndpoint = rc.localLlm?.apiEndpoint as string | undefined;
   if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[localLlm] Configuration: enabled=${rc.localLlm?.enabled}, bin=${bin}, model=${model}`);
+    console.debug(`[localLlm] Configuration: enabled=${rc.localLlm?.enabled}, modelName=${modelName}, apiEndpoint=${apiEndpoint}`);
   }
   
   // Better error messages for missing configuration
-  if (!bin) {
-    const error = 'Local LLM binary not found. Run setup wizard to configure: pnpm --filter @legilimens/cli start';
+  if (!modelName) {
+    const error = 'DMR model not configured. Run setup wizard to install granite-4.0-micro:latest: pnpm --filter @legilimens/cli start';
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug(`[localLlm] ${error}`);
     }
     return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
   }
   
-  if (!model) {
-    const error = 'phi-4 model file not found (~8.5GB). Run setup wizard to download: pnpm --filter @legilimens/cli start';
+  if (!apiEndpoint) {
+    const error = 'DMR API endpoint not configured. Default: http://localhost:12434. Run setup wizard: pnpm --filter @legilimens/cli start';
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug(`[localLlm] ${error}`);
     }
     return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
   }
 
-  // Guard: DMR-based execution not yet supported
-  if (bin === 'docker') {
-    const error = 'DMR-based generation is not yet supported. Local LLM execution via Docker Model Runner will be available in a future release. For now, use cloud AI providers (Tavily, etc.) or configure a traditional llama.cpp binary.';
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[localLlm] ${error}`);
-    }
-    return { success: false, raw: '', error, attempts: 0, durationMs: 0 };
-  }
-
-  // Use ~/.legilimens/temp/ instead of system tmpdir to avoid permission issues
-  const tempDir = join(homedir(), '.legilimens', 'temp');
-  const unique = `${Date.now()}-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
-  const file = join(tempDir, `llama-prompt-${unique}.txt`);
+  // DMR endpoint
+  const DMR_ENDPOINT = `${apiEndpoint}/engines/llama.cpp/v1/chat/completions`;
   
   // Enforce JSON-only output with optional schema hint
   let wrapped = `You MUST respond with ONLY a valid JSON object. No explanations, no prose, no markdown - just pure JSON.\n\n`;
@@ -79,118 +64,74 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
   
   wrapped += prompt;
 
-  const args: string[] = [
-    '-m', model,
-    '-f', file,
-    '-n', String(maxTokens ?? (rc.localLlm?.tokens ?? 512)),
-    '--temp', String(temperature ?? (rc.localLlm?.temp ?? 0.2)),
-    '--log-disable',  // Suppress llama.cpp build info and logs
-  ];
-  if (rc.localLlm?.threads) args.push('-t', String(rc.localLlm.threads));
-
-  const attempt = async (): Promise<LlmRunResult<T>> => new Promise((resolve) => {
-    let stdout = '';
-    let stderr = '';
-    let timedOut = false;
-    let settled = false;
-    let didCleanup = false;
-    let to: NodeJS.Timeout | undefined;
-
-    const writePromptFile = (): boolean => {
-      try {
-        // Ensure temp directory exists before writing
-        mkdirSync(tempDir, { recursive: true });
-        writeFileSync(file, wrapped, 'utf8');
-        return true;
-      } catch (error) {
-        settle({ success: false, raw: '', error: 'Failed to write temporary LLM prompt file: ' + (error instanceof Error ? error.message : String(error)), attempts: 1, durationMs: Date.now() - start });
-        return false;
-      }
-    };
-
-    const cleanup = () => {
-      if (didCleanup) return;
-      didCleanup = true;
-      try {
-        unlinkSync(file);
-      } catch (error) {
-        console.debug('Failed to remove temporary LLM prompt file:', error);
-      }
-    };
-
-    const settle = (result: LlmRunResult<T>) => {
-      if (settled) return;
-      settled = true;
-      if (to) clearTimeout(to);
-      cleanup();
-      resolve(result);
-    };
-
-    const writeSuccess = writePromptFile();
-    if (!writeSuccess || settled) return;
-
-    // Debug output for troubleshooting
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[localLlm] Prompt file: ${file}`);
-      console.debug(`[localLlm] Command: ${bin} ${args.join(' ')}`);
-      console.debug(`[localLlm] Prompt content:\n${wrapped}`);
-    }
-
-    const child = spawn(bin, args, { 
-      stdio: ['ignore', 'pipe', 'pipe'],
-      env: {
-        ...process.env,
-        LLAMA_LOG_LEVEL: '40',
-        LLAMA_LOG_COLORS: '0'
-      }
-    });
-    to = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGKILL');
-    }, timeoutMs ?? (rc.localLlm?.timeoutMs ?? 30000));
-
-    child.stdout.on('data', (d) => { stdout += String(d); });
-    child.stderr.on('data', (d) => { stderr += String(d); });
-
-    child.on('error', (error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      let errorMsg = `Local LLM process error: ${message}`;
+  // DMR HTTP client implementation
+  const attempt = async (systemMessage?: string): Promise<LlmRunResult<T>> => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs ?? (rc.localLlm?.timeoutMs ?? 30000));
+    
+    try {
+      // Build OpenAI-compatible messages
+      const messages = [
+        { 
+          role: 'system', 
+          content: systemMessage ?? 'You MUST respond with ONLY valid JSON. No prose, no markdown.' 
+        },
+        { 
+          role: 'user', 
+          content: wrapped 
+        }
+      ];
       
-      // Provide actionable suggestions based on error type
-      if (message.includes('ENOENT')) {
-        errorMsg += '. Local LLM binary not found. Run setup wizard to reconfigure.';
-      }
+      // Build request body
+      const requestBody = {
+        model: modelName,
+        messages,
+        max_tokens: maxTokens ?? (rc.localLlm?.outputTokens ?? 512),
+        temperature: temperature ?? (rc.localLlm?.temp ?? 0.2)
+      };
       
       if (process.env.LEGILIMENS_DEBUG) {
-        console.debug(`[localLlm] Process error: ${message}`);
+        console.debug('[localLlm] DMR request:', JSON.stringify(requestBody, null, 2));
       }
       
-      settle({
-        success: false,
-        raw: stdout || stderr,
-        error: errorMsg,
-        attempts: 1,
-        durationMs: Date.now() - start
+      // Make HTTP request to DMR
+      const response = await fetch(DMR_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal
       });
-    });
-
-    child.on('close', () => {
-      if (settled) {
-        cleanup();
-        return;
+      
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug('[localLlm] DMR response status:', response.status);
       }
-
-      if (timedOut) {
-        const duration = Date.now() - start;
-        const errorMsg = `AI generation timed out after ${duration}ms. Try using minimal mode: export LEGILIMENS_DISABLE_TUI=true`;
+      
+      // Handle HTTP errors
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        const errorMsg = `DMR API error: HTTP ${response.status} - ${response.statusText}. ${errorText}`;
         if (process.env.LEGILIMENS_DEBUG) {
-          console.debug(`[localLlm] Timeout after ${duration}ms`);
+          console.debug(`[localLlm] ${errorMsg}`);
         }
-        settle({ success: false, raw: stdout, error: errorMsg, attempts: 1, durationMs: duration });
-        return;
+        return {
+          success: false,
+          raw: errorText,
+          error: errorMsg,
+          attempts: 1,
+          durationMs: Date.now() - start
+        };
       }
-
-      const jsonText = extractFirstJson(stdout) ?? extractFirstJson(stderr) ?? '';
+      
+      // Parse response
+      const data = await response.json();
+      const content = data.choices?.[0]?.message?.content ?? '';
+      
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug('[localLlm] DMR content:', content.slice(0, 200));
+      }
+      
+      // Extract and parse JSON
+      const jsonText = extractFirstJson(content) ?? '';
       const parsed = jsonText ? safeParseJson<T>(jsonText) : null;
       
       if (parsed) {
@@ -201,31 +142,118 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
             if (process.env.LEGILIMENS_DEBUG) {
               console.debug(`[localLlm] Successfully extracted, parsed, and validated JSON against schema`);
             }
-            settle({ success: true, raw: stdout, json: validation.data, attempts: 1, durationMs: Date.now() - start });
+            return { 
+              success: true, 
+              raw: content, 
+              json: validation.data, 
+              attempts: 1, 
+              durationMs: Date.now() - start 
+            };
           } else {
             if (process.env.LEGILIMENS_DEBUG) {
               console.debug(`[localLlm] JSON parsed but schema validation failed: ${validation.error}`);
             }
-            settle({ success: false, raw: stdout, error: `Schema validation failed: ${validation.error}`, attempts: 1, durationMs: Date.now() - start });
+            return { 
+              success: false, 
+              raw: content, 
+              error: `Schema validation failed: ${validation.error}`, 
+              attempts: 1, 
+              durationMs: Date.now() - start 
+            };
           }
         } else {
           // No schema, just use parsed JSON
           if (process.env.LEGILIMENS_DEBUG) {
             console.debug(`[localLlm] Successfully extracted and parsed JSON`);
           }
-          settle({ success: true, raw: stdout, json: parsed, attempts: 1, durationMs: Date.now() - start });
+          return { 
+            success: true, 
+            raw: content, 
+            json: parsed, 
+            attempts: 1, 
+            durationMs: Date.now() - start 
+          };
         }
       } else {
-        const preview = (stdout || stderr).slice(0, 500);
+        const preview = content.slice(0, 500);
         if (process.env.LEGILIMENS_DEBUG) {
           console.debug(`[localLlm] Invalid JSON response. Preview (first 500 chars): ${preview}`);
         } else {
           console.warn(`[localLlm] Invalid JSON response. Set LEGILIMENS_DEBUG=true for details.`);
         }
-        settle({ success: false, raw: stdout || stderr, error: 'Invalid JSON response from local LLM', attempts: 1, durationMs: Date.now() - start });
+        return { 
+          success: false, 
+          raw: content, 
+          error: 'Invalid JSON response from local LLM', 
+          attempts: 1, 
+          durationMs: Date.now() - start 
+        };
       }
-    });
-  });
+    } catch (error) {
+      const duration = Date.now() - start;
+      
+      // Handle specific error types
+      if (error instanceof Error) {
+        // Abort/Timeout error
+        if (error.name === 'AbortError') {
+          const errorMsg = `AI generation timed out after ${duration}ms. Ensure Docker Model Runner is running.`;
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug(`[localLlm] ${errorMsg}`);
+          }
+          return { 
+            success: false, 
+            raw: '', 
+            error: errorMsg, 
+            attempts: 1, 
+            durationMs: duration 
+          };
+        }
+        
+        // Connection refused
+        if (error.message.includes('ECONNREFUSED')) {
+          const errorMsg = 'Cannot connect to Docker Model Runner. Ensure Docker Desktop is running and DMR is enabled.';
+          if (process.env.LEGILIMENS_DEBUG) {
+            console.debug(`[localLlm] ${errorMsg}`);
+          }
+          return { 
+            success: false, 
+            raw: '', 
+            error: errorMsg, 
+            attempts: 1, 
+            durationMs: duration 
+          };
+        }
+        
+        // Network error
+        const errorMsg = `Network error connecting to DMR: ${error.message}`;
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[localLlm] ${errorMsg}`);
+        }
+        return { 
+          success: false, 
+          raw: '', 
+          error: errorMsg, 
+          attempts: 1, 
+          durationMs: duration 
+        };
+      }
+      
+      // Unknown error
+      const errorMsg = `DMR API error: ${String(error)}`;
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[localLlm] ${errorMsg}`);
+      }
+      return { 
+        success: false, 
+        raw: '', 
+        error: errorMsg, 
+        attempts: 1, 
+        durationMs: duration 
+      };
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
 
   // First attempt
   const first = await attempt();
@@ -241,7 +269,7 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
       if (process.env.LEGILIMENS_DEBUG) {
         console.debug('[localLlm] Retry successful');
       }
-      return second;
+      return { ...second, attempts: first.attempts + second.attempts };
     }
     
     // Check if response contains prose like "I am ready" or "Here is"
@@ -253,112 +281,26 @@ export async function runLocalJson<T = unknown>({ prompt, maxTokens, temperature
         console.debug('[localLlm] Detected prose in response, attempting third attempt with stricter prompt');
       }
       
-      // Third attempt with stricter system-level ban on prose
-      const stricterWrapped = `CRITICAL: You are a JSON API. You MUST respond with ONLY valid JSON. NO prose, NO explanations, NO "I am ready", NO "Here is", NO text before or after JSON.
+      // Third attempt with stricter system message
+      const stricterSystemMessage = `CRITICAL: You are a JSON API. You MUST respond with ONLY valid JSON. NO prose, NO explanations, NO "I am ready", NO "Here is", NO text before or after JSON.
 
 If you output ANYTHING other than pure JSON, the system will fail.
 
-REQUIRED OUTPUT FORMAT (JSON only, nothing else):
-${schema ? `\nThe JSON must match this schema:\n${getSchemaPromptHint(schema)}\n` : ''}
-
-${prompt}
-
 REMINDER: Output ONLY the JSON object. Start with { and end with }. Nothing else.`;
-
-      // Write the stricter prompt
-      try {
-        mkdirSync(tempDir, { recursive: true });
-        const strictFile = join(tempDir, `llama-prompt-strict-${unique}.txt`);
-        writeFileSync(strictFile, stricterWrapped, 'utf8');
-        
-        const args: string[] = [
-          '-m', model,
-          '-f', strictFile,
-          '-n', String(maxTokens ?? (rc.localLlm?.tokens ?? 512)),
-          '--temp', String(temperature ?? (rc.localLlm?.temp ?? 0.2)),
-        ];
-        if (rc.localLlm?.threads) args.push('-t', String(rc.localLlm.threads));
-        
-        const thirdAttemptResult = await new Promise<LlmRunResult<T>>((resolve) => {
-          let stdout = '';
-          let stderr = '';
-          let timedOut = false;
-          let settled = false;
-          let to: NodeJS.Timeout | undefined;
-          
-          const settle = (result: LlmRunResult<T>) => {
-            if (settled) return;
-            settled = true;
-            if (to) clearTimeout(to);
-            try { unlinkSync(strictFile); } catch {}
-            resolve(result);
-          };
-          
-          const child = spawn(bin, args, { 
-            stdio: ['ignore', 'pipe', 'pipe'],
-            env: {
-              ...process.env,
-              LLAMA_LOG_LEVEL: '40',
-              LLAMA_LOG_COLORS: '0'
-            }
-          });
-          to = setTimeout(() => {
-            timedOut = true;
-            child.kill('SIGKILL');
-          }, timeoutMs ?? (rc.localLlm?.timeoutMs ?? 30000));
-          
-          child.stdout.on('data', (d) => { stdout += String(d); });
-          child.stderr.on('data', (d) => { stderr += String(d); });
-          
-          child.on('error', (error) => {
-            settle({
-              success: false,
-              raw: stdout || stderr,
-              error: `Local LLM process error: ${error instanceof Error ? error.message : String(error)}`,
-              attempts: 1,
-              durationMs: Date.now() - start
-            });
-          });
-          
-          child.on('close', () => {
-            if (settled) return;
-            
-            if (timedOut) {
-              settle({ success: false, raw: stdout, error: `Timed out after ${Date.now() - start}ms`, attempts: 1, durationMs: Date.now() - start });
-              return;
-            }
-            
-            const jsonText = extractFirstJson(stdout) ?? extractFirstJson(stderr) ?? '';
-            const parsed = jsonText ? safeParseJson<T>(jsonText) : null;
-            
-            if (parsed) {
-              if (schema) {
-                const validation = validateWithSchema(schema, parsed);
-                if (validation.success) {
-                  settle({ success: true, raw: stdout, json: validation.data, attempts: 1, durationMs: Date.now() - start });
-                } else {
-                  settle({ success: false, raw: stdout, error: `Schema validation failed: ${validation.error}`, attempts: 1, durationMs: Date.now() - start });
-                }
-              } else {
-                settle({ success: true, raw: stdout, json: parsed, attempts: 1, durationMs: Date.now() - start });
-              }
-            } else {
-              settle({ success: false, raw: stdout || stderr, error: 'Invalid JSON response from local LLM', attempts: 1, durationMs: Date.now() - start });
-            }
-          });
-        });
-        
-        if (thirdAttemptResult.success) {
-          if (process.env.LEGILIMENS_DEBUG) {
-            console.debug('[localLlm] Third attempt successful');
-          }
-          return { ...thirdAttemptResult, attempts: first.attempts + second.attempts + thirdAttemptResult.attempts };
-        }
-      } catch (error) {
+      
+      const third = await attempt(stricterSystemMessage);
+      
+      if (third.success) {
         if (process.env.LEGILIMENS_DEBUG) {
-          console.debug('[localLlm] Third attempt failed:', error);
+          console.debug('[localLlm] Third attempt successful');
         }
+        return { ...third, attempts: first.attempts + second.attempts + third.attempts };
       }
+      
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug('[localLlm] All attempts failed, falling back to external CLI tools');
+      }
+      return { ...third, attempts: first.attempts + second.attempts + third.attempts };
     }
     
     if (process.env.LEGILIMENS_DEBUG) {

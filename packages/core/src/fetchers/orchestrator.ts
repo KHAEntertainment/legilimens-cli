@@ -34,6 +34,25 @@ function normalizeIdentifierForUrl(identifier: string, sourceType: SourceType): 
     }
   }
   
+  // For NPM, handle scoped packages (@scope/package)
+  if (sourceType === 'npm') {
+    // If it's a scoped package, preserve the @ and scope
+    if (normalized.startsWith('@')) {
+      const match = normalized.match(/^(@[^/]+)\/(.+)$/);
+      if (match) {
+        const scope = match[1]; // Preserve case for scope
+        const pkg = match[2].toLowerCase(); // Lowercase package name
+        normalized = `${scope}/${pkg}`;
+      } else {
+        // Malformed scoped package, lowercase everything
+        normalized = normalized.toLowerCase();
+      }
+    } else {
+      // Regular package, just lowercase
+      normalized = normalized.toLowerCase();
+    }
+  }
+  
   return normalized;
 }
 
@@ -71,16 +90,12 @@ export async function fetchDocumentation(
     };
   }
 
-  // NPM fallback chain: Context7 → ref.tools → Firecrawl
+  // NPM fallback chain: Context7 → Firecrawl
   if (dependencyType === 'npm') {
     const normalizedId = normalizeIdentifierForUrl(identifier, 'npm');
     const context7Config = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.context7 };
     const context7Result = await fetchFromContext7(normalizedId, context7Config);
     if (context7Result.success) return context7Result;
-
-    const refToolsConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.refTools };
-    const refToolsResult = await fetchFromRefTools(normalizedId, refToolsConfig);
-    if (refToolsResult.success) return refToolsResult;
 
     if (runtimeConfig.apiKeys.firecrawl) {
       const firecrawlConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.firecrawl };
@@ -91,7 +106,7 @@ export async function fetchDocumentation(
 
     return {
       success: false,
-      error: `NPM documentation fetch failed for ${identifier}. Try using package name (e.g., react). Attempted: Context7, ref.tools${runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
+      error: `NPM documentation fetch failed for ${identifier}. Try using package name (e.g., react). Attempted: Context7${runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
     };
   }
 
@@ -108,9 +123,21 @@ export async function fetchDocumentation(
     return await fetchFromFirecrawl(identifier, firecrawlConfig);
   }
 
+  // Unknown type: try Context7 first (works for popular packages), then Firecrawl if URL
+  const context7Config = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.context7 };
+  const context7Result = await fetchFromContext7(identifier, context7Config);
+  if (context7Result.success) return context7Result;
+
+  // Try Firecrawl if identifier looks like a URL
+  if (identifier.includes('://') && runtimeConfig.apiKeys.firecrawl) {
+    const firecrawlConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.firecrawl };
+    const firecrawlResult = await fetchFromFirecrawl(identifier, firecrawlConfig);
+    if (firecrawlResult.success) return firecrawlResult;
+  }
+
   return {
     success: false,
-    error: `Unknown dependency type for identifier: ${identifier}. Supported formats: GitHub owner/repo (e.g., vercel/ai), NPM package name (e.g., react), or direct URL (e.g., https://example.com/docs)`
+    error: `Could not fetch documentation for ${identifier}. Attempted: Context7${identifier.includes('://') && runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
   };
 }
 
@@ -151,27 +178,24 @@ export async function fetchDocumentationWithSource(
     };
   }
 
-  // NPM fallback chain: Context7 → ref.tools → Firecrawl
+  // NPM fallback chain: Context7 → Firecrawl
   if (sourceType === 'npm') {
     const normalizedId = normalizeIdentifierForUrl(identifier, 'npm');
     const context7Config = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.context7 };
     const context7Result = await fetchFromContext7(normalizedId, context7Config);
     if (context7Result.success) return context7Result;
 
-    const refToolsConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.refTools };
-    const refToolsResult = await fetchFromRefTools(normalizedId, refToolsConfig);
-    if (refToolsResult.success) return refToolsResult;
-
     if (runtimeConfig.apiKeys.firecrawl) {
       const firecrawlConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.firecrawl };
-      const npmUrl = `https://www.npmjs.com/package/${normalizedId}`;
+      // Prefer repositoryUrl from AI detection if available
+      const npmUrl = repositoryUrl || `https://www.npmjs.com/package/${normalizedId}`;
       const firecrawlResult = await fetchFromFirecrawl(npmUrl, firecrawlConfig);
       if (firecrawlResult.success) return firecrawlResult;
     }
 
     return {
       success: false,
-      error: `NPM documentation fetch failed for ${identifier}. Try using package name (e.g., react). Attempted: Context7, ref.tools${runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
+      error: `NPM documentation fetch failed for ${identifier}. Try using package name (e.g., react). Attempted: Context7${runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
     };
   }
 
@@ -189,9 +213,22 @@ export async function fetchDocumentationWithSource(
     return await fetchFromFirecrawl(urlToFetch, firecrawlConfig);
   }
 
+  // Unknown type: try Context7 first (works for popular packages), then Firecrawl if URL available
+  const context7Config = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.context7 };
+  const context7Result = await fetchFromContext7(identifier, context7Config);
+  if (context7Result.success) return context7Result;
+
+  // Try Firecrawl with repositoryUrl if available, or if identifier looks like a URL
+  const urlToTry = repositoryUrl || (identifier.includes('://') ? identifier : undefined);
+  if (urlToTry && runtimeConfig.apiKeys.firecrawl) {
+    const firecrawlConfig = { ...fetcherConfig, apiKey: runtimeConfig.apiKeys.firecrawl };
+    const firecrawlResult = await fetchFromFirecrawl(urlToTry, firecrawlConfig);
+    if (firecrawlResult.success) return firecrawlResult;
+  }
+
   return {
     success: false,
-    error: `Unknown source type for identifier: ${identifier}. Supported formats: GitHub owner/repo (e.g., vercel/ai), NPM package name (e.g., react), or direct URL (e.g., https://example.com/docs)`
+    error: `Could not fetch documentation for ${identifier}. Attempted: Context7${urlToTry && runtimeConfig.apiKeys.firecrawl ? ', Firecrawl' : ''}`
   };
 }
 
@@ -208,7 +245,7 @@ export function describeFetchStrategy(identifier: string, runtimeConfig: Runtime
   }
 
   if (dependencyType === 'npm') {
-    const strategies = ['Context7', 'ref.tools'];
+    const strategies = ['Context7'];
     if (runtimeConfig.apiKeys.firecrawl) strategies.push('Firecrawl');
     return `NPM: ${strategies.join(' → ')}`;
   }
@@ -217,5 +254,7 @@ export function describeFetchStrategy(identifier: string, runtimeConfig: Runtime
     return runtimeConfig.apiKeys.firecrawl ? 'URL: Firecrawl' : 'URL: No API key configured';
   }
 
-  return 'Unknown type: No strategy available';
+  const strategies = ['Context7'];
+  if (runtimeConfig.apiKeys.firecrawl) strategies.push('Firecrawl');
+  return `Unknown type: ${strategies.join(' → ')}`;
 }

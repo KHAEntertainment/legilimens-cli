@@ -29,15 +29,61 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
 
   // Step 1: Search with Tavily (uses domain filtering + developer-focused query)
   const searchResult = await searchPreferredSources('', natural);  // buildQuery removed, now handled in webSearch
-  const { items, tavilyAnswer, suggestedIdentifier } = searchResult;
+  const { items, tavilyAnswer, suggestedIdentifier, sourceRecommendation } = searchResult;
 
   if (process.env.LEGILIMENS_DEBUG) {
     console.debug(`[pipeline] Tavily found ${items.length} results`);
     console.debug(`[pipeline] Tavily suggested: ${suggestedIdentifier || 'none'}`);
     console.debug(`[pipeline] Tavily answer: ${tavilyAnswer?.slice(0, 100) || 'none'}...`);
+    if (sourceRecommendation) {
+      console.debug(`[pipeline] Tavily recommends: ${sourceRecommendation.sourceType} (${sourceRecommendation.confidence})`);
+      console.debug(`[pipeline] Primary URL: ${sourceRecommendation.primaryUrl || 'none'}`);
+    }
+  }
+
+  // Step 1A: Tavily's LLM recommendation - If Tavily explicitly recommends a source, use it
+  if (sourceRecommendation && sourceRecommendation.confidence === 'high' && sourceRecommendation.primaryUrl) {
+    if (process.env.LEGILIMENS_DEBUG) {
+      console.debug(`[pipeline] Using Tavily's high-confidence recommendation: ${sourceRecommendation.sourceType}`);
+    }
+    
+    // Map Tavily's source type to our source type
+    const mappedSourceType = sourceRecommendation.sourceType === 'context7' ? 'npm' :
+                             sourceRecommendation.sourceType === 'github' ? 'github' :
+                             sourceRecommendation.sourceType === 'official' ? 'url' : 'unknown';
+    
+    // Extract identifier from URL if possible
+    let identifier = natural;
+    if (sourceRecommendation.sourceType === 'github') {
+      const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+      if (match) {
+        identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
+      }
+    } else if (sourceRecommendation.sourceType === 'context7') {
+      // Parse normalized identifier from Context7 URL
+      // Expected format: https://context7.com/package-name or https://context7.com/@scope/package-name
+      const context7Match = sourceRecommendation.primaryUrl.match(/context7\.com\/(.+?)(?:[?#]|$)/);
+      if (context7Match) {
+        identifier = context7Match[1].replace(/\/$/, '');
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[pipeline] Extracted Context7 identifier from URL: ${identifier}`);
+        }
+      }
+    }
+    
+    return {
+      sourceType: mappedSourceType,
+      normalizedIdentifier: identifier,
+      repositoryUrl: sourceRecommendation.primaryUrl,
+      aiAssisted: true,  // Tavily's LLM made the recommendation
+      confidence: 'high',
+      searchSummary: tavilyAnswer || `Tavily recommends ${sourceRecommendation.sourceType} as the most authoritative source`,
+      dependencyType: inferDependencyType(items[0]?.title || natural, items[0]?.summary)
+    };
   }
 
   // Step 2: Direct Tavily path - If we have high-confidence GitHub result, use it immediately
+  // (This is a fallback if Step 1A didn't trigger)
   if (items.length > 0 && items[0].sourceHint === 'github' && (items[0].score ?? 0) > 0.75) {
     const topResult = items[0];
     const match = topResult.url.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
@@ -87,11 +133,12 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
     
     const llmPrompt = [
       'Given these candidate sources, choose the canonical identifier, primary URL, source type, confidence, and dependency type.',
+      sourceRecommendation ? `Tavily's LLM recommends: ${sourceRecommendation.sourceType} (${sourceRecommendation.confidence} confidence) at ${sourceRecommendation.primaryUrl || 'unknown URL'}` : '',
       'Respond with a single JSON object with fields:',
       '{ "canonicalIdentifier": string|null, "repositoryUrl": string|null, "sourceType": "github|npm|url|unknown", "confidence": "high|medium|low", "dependencyType": "framework|api|library|tool|other", "searchSummary": string }',
       `Natural: ${natural}`,
       `Candidates: ${JSON.stringify(items, null, 2)}`,
-    ].join('\n');
+    ].filter(Boolean).join('\n');  // Filter out empty strings
 
     const decision = await runLocalJson<any>({ prompt: llmPrompt, schema: discoverySchema });
     
@@ -114,13 +161,45 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
       };
     }
 
-    // Step 5: LLM failed - fallback to Tavily's top result
+    // Step 5: LLM failed - fallback to Tavily's recommendation or top result
     if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[pipeline] LLM failed, falling back to Tavily's top result`);
+      console.debug(`[pipeline] LLM failed, falling back to ${sourceRecommendation ? 'Tavily recommendation' : 'top result'}`);
     }
     
+    // Prefer Tavily's recommendation if available and confidence is not low
+    if (sourceRecommendation && sourceRecommendation.primaryUrl && sourceRecommendation.confidence !== 'low') {
+      const mappedSourceType = sourceRecommendation.sourceType === 'context7' ? 'npm' :
+                               sourceRecommendation.sourceType === 'github' ? 'github' :
+                               sourceRecommendation.sourceType === 'official' ? 'url' : 'unknown';
+      
+      let identifier = natural;
+      if (sourceRecommendation.sourceType === 'github') {
+        const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+        if (match) {
+          identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
+        }
+      } else if (sourceRecommendation.sourceType === 'context7') {
+        const context7Match = sourceRecommendation.primaryUrl.match(/context7\.com\/(.+?)(?:[?#]|$)/);
+        if (context7Match) {
+          identifier = context7Match[1].replace(/\/$/, '');
+        }
+      }
+      
+      return {
+        sourceType: mappedSourceType,
+        normalizedIdentifier: identifier,
+        repositoryUrl: sourceRecommendation.primaryUrl,
+        aiAssisted: true,
+        confidence: sourceRecommendation.confidence,
+        searchSummary: tavilyAnswer || `Tavily recommends ${sourceRecommendation.sourceType}`,
+        dependencyType: inferDependencyType(items[0]?.title || natural, items[0]?.summary)
+      };
+    }
+    
+    // Fallback to top result if no recommendation or confidence is low
     const topResult = items[0];
-    const sourceType = topResult.sourceHint === 'github' ? 'github' : 
+    const sourceType = topResult.sourceHint === 'context7' ? 'npm' :  // Map context7 to npm
+                      topResult.sourceHint === 'github' ? 'github' : 
                       topResult.sourceHint === 'official' ? 'url' : 'unknown';
     
     const match = topResult.url.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
@@ -164,5 +243,3 @@ function inferDependencyType(title: string, summary?: string): 'framework' | 'ap
   
   return 'other';
 }
-
-
