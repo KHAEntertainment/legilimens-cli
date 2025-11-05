@@ -106,52 +106,52 @@ describe('detectSourceType', () => {
     });
   });
 
-  describe('NPM detection', () => {
+  describe('NPM-like inputs (now return unknown, trigger AI pipeline)', () => {
     describe('scoped packages', () => {
-      it('detects @scope/package as NPM source', () => {
+      it('returns unknown for @scope/package (triggers AI pipeline)', () => {
         const result = detectSourceType('@vercel/ai');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('@vercel/ai');
-        expect(result.confidence).toBe('high');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects @supabase/supabase-js as NPM source', () => {
+      it('returns unknown for @supabase/supabase-js (triggers AI pipeline)', () => {
         const result = detectSourceType('@supabase/supabase-js');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('@supabase/supabase-js');
-        expect(result.confidence).toBe('high');
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('simple packages', () => {
-      it('detects lodash as NPM source', () => {
+      it('returns unknown for lodash (triggers AI pipeline)', () => {
         const result = detectSourceType('lodash');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('lodash');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects react as NPM source', () => {
+      it('returns unknown for react (triggers AI pipeline)', () => {
         const result = detectSourceType('react');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('react');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects express as NPM source', () => {
+      it('returns unknown for express (triggers AI pipeline)', () => {
         const result = detectSourceType('express');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('express');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('with hyphens', () => {
-      it('detects hyphenated package names as NPM source', () => {
+      it('returns unknown for hyphenated package names (triggers AI pipeline)', () => {
         const result = detectSourceType('ink-text-input');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('ink-text-input');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
     });
   });
@@ -207,10 +207,11 @@ describe('detectSourceType', () => {
     });
 
     describe('ambiguous patterns', () => {
-      it('detects single segment with hyphen as NPM', () => {
+      it('returns unknown for single segment with hyphen (was NPM, now triggers AI)', () => {
         const result = detectSourceType('react-native');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('react-native');
+        expect(result.confidence).toBe('low');
       });
 
       it('detects two segments with slash as GitHub', () => {
@@ -291,11 +292,12 @@ describe('detectSourceType', () => {
     });
 
     describe('Framework mappings', () => {
-      it('maps "React" to react package', () => {
+      it('returns unknown for "React" (capitalized triggers AI pipeline)', () => {
+        // Capitalized "React" triggers looksNaturalLanguage check, skipping mapNaturalLanguageToIdentifier
         const result = detectSourceType('React');
-        expect(result.sourceType).toBe('npm');
-        expect(result.normalizedIdentifier).toBe('react');
-        expect(result.confidence).toBe('medium');
+        expect(result.sourceType).toBe('unknown');
+        expect(result.normalizedIdentifier).toBe('React'); // NOT mapped because capitalized
+        expect(result.confidence).toBe('low');
       });
 
       it('maps "Next.js" to nextjs/next GitHub repo', async () => {
@@ -305,16 +307,16 @@ describe('detectSourceType', () => {
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "Vue" to vue package', () => {
+      it('returns unknown for "Vue" (capitalized triggers AI pipeline)', () => {
         const result = detectSourceType('Vue');
-        expect(result.sourceType).toBe('npm');
-        expect(result.normalizedIdentifier).toBe('vue');
-        expect(result.confidence).toBe('medium');
+        expect(result.sourceType).toBe('unknown');
+        expect(result.normalizedIdentifier).toBe('Vue'); // NOT mapped because capitalized
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('Tool mappings', () => {
-      it('maps "ESLint" to eslint package', async () => {
+      it('maps "ESLint" to eslint package via AI', async () => {
         const result = await detectSourceTypeWithAI('ESLint');
         expect(result.sourceType).toBe('npm');
         expect(result.normalizedIdentifier).toBe('eslint');
@@ -398,7 +400,7 @@ describe('deriveDeepWikiUrl', () => {
   });
 
   describe('null returns (non-GitHub sources)', () => {
-    describe('NPM packages', () => {
+    describe('NPM-like inputs (now return null, was detected as NPM)', () => {
       it('returns null for scoped NPM packages', () => {
         const url = deriveDeepWikiUrl('@vercel/ai');
         expect(url).toBeNull();
@@ -451,11 +453,11 @@ describe('isGitHubIdentifier', () => {
   });
 
   describe('returns false for non-GitHub', () => {
-    it('returns false for scoped NPM packages', () => {
+    it('returns false for scoped NPM packages (now returns unknown)', () => {
       expect(isGitHubIdentifier('@vercel/ai')).toBe(false);
     });
 
-    it('returns false for simple NPM packages', () => {
+    it('returns false for simple NPM packages (now returns unknown)', () => {
       expect(isGitHubIdentifier('lodash')).toBe(false);
     });
 
