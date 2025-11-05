@@ -2,8 +2,8 @@
  * Source Detection Module
  *
  * Provides pattern matching utilities for identifying dependency sources
- * (GitHub repositories, NPM packages, URLs) and deriving DeepWiki URLs
- * from GitHub identifiers.
+ * (GitHub repositories, URLs) and deriving DeepWiki URLs from GitHub identifiers.
+ * NPM package detection is handled by Context7 search API (see repositoryDiscoveryPipeline).
  */
 
 // Type Definitions
@@ -32,22 +32,6 @@ const GITHUB_PATTERNS = [
 ];
 
 const URL_PATTERN = /^https?:\/\//i;
-
-const NPM_PATTERNS = [
-  // @scope/package format
-  /^@[a-z0-9-]+\/[a-z0-9-]+$/,
-  // simple package names (lowercase, hyphens, no slashes) - more restrictive
-  // Must start with letter and avoid common non-package patterns
-  /^[a-z][a-z0-9-]*[a-z0-9]$/,
-];
-
-// Common non-package patterns that should be treated as unknown
-const NON_PACKAGE_PATTERNS = [
-  /^unknown-/,
-  /^test-/,
-  /\d{4,}$/, // ends with 4+ digits
-  /format-\d+$/,
-];
 
 // Natural Language Processing Functions
 
@@ -140,63 +124,31 @@ export function detectSourceType(input: string): DetectionResult {
   // Use mapped identifier for detection if mapping was successful
   const identifierToTest = isMapped ? mappedIdentifier : trimmed;
 
-  // Test NPM scoped packages FIRST (before GitHub, since they contain slashes)
-  if (identifierToTest.startsWith('@')) {
-    if (NPM_PATTERNS[0].test(identifierToTest)) {
-      return {
-        sourceType: 'npm',
-        normalizedIdentifier: identifierToTest,
-        confidence: isMapped ? 'medium' : 'high',
-      };
+  // Exclude scoped packages (starting with @) from GitHub detection
+  // These should return unknown and trigger AI pipeline
+  if (!identifierToTest.startsWith('@')) {
+    // Test GitHub patterns (priority 1)
+    for (const pattern of GITHUB_PATTERNS) {
+      const match = identifierToTest.match(pattern);
+      if (match) {
+        // Extract owner/repo, removing .git suffix and trailing slashes
+        const ownerRepo = match[1].replace(/\.git$/, '').replace(/\/$/, '');
+        return {
+          sourceType: 'github',
+          normalizedIdentifier: ownerRepo,
+          confidence: isMapped ? 'medium' : 'high',
+        };
+      }
     }
   }
 
-  // Test GitHub patterns (priority 2)
-  for (const pattern of GITHUB_PATTERNS) {
-    const match = identifierToTest.match(pattern);
-    if (match) {
-      // Extract owner/repo, removing .git suffix and trailing slashes
-      const ownerRepo = match[1].replace(/\.git$/, '').replace(/\/$/, '');
-      return {
-        sourceType: 'github',
-        normalizedIdentifier: ownerRepo,
-        confidence: isMapped ? 'medium' : 'high',
-      };
-    }
-  }
-
-  // Test URL pattern (priority 3) - exclude GitHub URLs
+  // Test URL pattern (priority 2) - exclude GitHub URLs
   if (URL_PATTERN.test(identifierToTest) && !identifierToTest.toLowerCase().includes('github.com')) {
     return {
       sourceType: 'url',
       normalizedIdentifier: identifierToTest,
       confidence: isMapped ? 'medium' : 'high',
     };
-  }
-
-  // Test simple NPM packages (priority 4)
-  if (!identifierToTest.includes('/')) {
-    const lowerIdentifier = identifierToTest.toLowerCase();
-    
-    // Check non-package patterns first
-    for (const pattern of NON_PACKAGE_PATTERNS) {
-      if (pattern.test(lowerIdentifier)) {
-        return {
-          sourceType: 'unknown',
-          normalizedIdentifier: trimmed,
-          confidence: 'low',
-        };
-      }
-    }
-    
-    // Then test NPM pattern
-    if (NPM_PATTERNS[1].test(lowerIdentifier)) {
-      return {
-        sourceType: 'npm',
-        normalizedIdentifier: identifierToTest,
-        confidence: isMapped ? 'medium' : 'medium',
-      };
-    }
   }
 
   // No match found
