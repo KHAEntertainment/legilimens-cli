@@ -12,7 +12,7 @@ export default defineConfig({
     }
   },
   test: {
-    include: ['tests/**/*.spec.ts'],
+    include: ['tests/**/*.spec.ts', 'packages/core/tests/**/*.spec.ts'],
     environment: 'node',
     globals: true,
     reporters: 'default'

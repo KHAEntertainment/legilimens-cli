@@ -49,7 +49,8 @@ export type { PerformanceMetrics } from './types.js';
 export type {
   SourceType,
   DetectionResult,
-  AsyncDetectionResult
+  AsyncDetectionResult,
+  DetectionOptions
 } from './detection/sourceDetector.js';
 export {
   detectSourceType,

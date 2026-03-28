@@ -15,7 +15,7 @@ Refactor and Enhancement Notes - 10/27/2025
  7) Opportunity to correct an inaccurate match. For instance, I searched for Mem0, an agentic memory system. Instead of identifying the core project repo, it found a 3rd party MCP for it. 
 
  '''
- [pipeline] Discovering repository for: "Mem0"
+[pipeline] Discovering repository for: "Mem0"
 ◑  Detecting dependency source and type with AI...[pipeline] Tavily found 5 results
 [pipeline] Tavily suggested: pinkpixel-dev/mem0-mcp.
 [pipeline] Tavily answer: The official GitHub repository for Mem0 is available at https://github.com/pinkpixel-dev/mem0-mcp. M...
@@ -88,7 +88,7 @@ Similar examples could be appended to AGENTS.md, Gemini.md, .cursorrules, warp.m
 - https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview.md
 
 3) Major Function Addition: local enhanced graphRAG
-## Important! We are not planning and implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
+## Important! We are not implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
 
 I made a typescript based advanced graphRAG solution with Vercel AI SDK and llama.cpp support tailored to be incorporated into this project as well as operate standalone. We will work on this as it's own dedicated phase/plan but be aware that it will be the next step after these modifications. 
 To get more knowledge about this project: https://deepwiki.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk
