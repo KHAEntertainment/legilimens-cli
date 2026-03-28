@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@legilimens/core': resolve(rootDir, 'packages/core/src/index.ts'),
+      '@legilimens/cli': resolve(rootDir, 'packages/cli/src/index.ts'),
       '@legilimens/harness-service': resolve(rootDir, 'packages/harness-service/src')
     }
   },
