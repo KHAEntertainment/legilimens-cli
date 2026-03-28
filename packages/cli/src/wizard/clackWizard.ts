@@ -463,7 +463,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       );
     }
 
-    outro('Setup complete. You can now generate gateway docs.');
+    outro('Setup complete. You can now generate dependency docs.');
     return { success: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

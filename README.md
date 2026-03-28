@@ -5,7 +5,7 @@ package registries, and web sources. It runs as a polished Clack-based TUI, ship
 a TypeScript monorepo, and keeps DeepWiki as the canonical knowledge surface.
 
 ## Why It Exists
-- Preserve context windows by generating gateway docs that point back to DeepWiki.
+- Preserve context windows by generating lightweight dependency docs that point back to DeepWiki.
 - Run consistent template-driven outputs across CLI and service harness surfaces.
 - Offer a welcoming launch flow with ASCII branding that gracefully falls back to minimal mode.
 - Keep operational guardrails visible: typical runs aim for ≤10s, hard stop at 60s.
@@ -14,7 +14,7 @@ a TypeScript monorepo, and keeps DeepWiki as the canonical knowledge surface.
 - **Workspace**: pnpm-managed TypeScript monorepo targeting Node.js 20 LTS.
 - **Cross-Platform**: macOS, Linux, Windows, WSL via cross-platform Node.js APIs.
 - **Packages**:
-  - `@legilimens/core` – reusable gateway generation engine + local LLM orchestration + Tavily search + parity helpers.
+  - `@legilimens/core` – reusable documentation generation engine + local LLM orchestration + Tavily search + parity helpers.
   - `@legilimens/cli` – Clack-powered TUI with wizard-driven config + interactive flows.
   - `@legilimens/harness-service` – Fastify HTTP harness that mirrors CLI responses.
 - **AI Integration**: Local llama.cpp (preferred) or Docker Model Runner + Tavily web search; Firecrawl/Context7/RefTools as REST tools.
@@ -79,7 +79,7 @@ Minimal mode produces plain-text, ANSI-free output. Controlled at startup only
 1. **Enter dependency identifier** — natural language, package name, GitHub `owner/repo`, or URL
 2. **AI source detection** — resolves source type with Context7, Tavily, or manual fallback
 3. **Source confirmation** — review detected source, override if incorrect
-4. **Fetch & generate** — documentation fetched and gateway doc written to `docs/`
+4. **Fetch & generate** — documentation fetched and quick-reference doc written to `docs/`
 
 ### Batch Mode
 

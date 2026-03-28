@@ -158,7 +158,7 @@ export async function runClackApp(): Promise<void> {
       const action = await select({
         message: 'What would you like to do?',
         options: [
-          { value: 'generate', label: 'Generate gateway documentation' },
+          { value: 'generate', label: 'Generate dependency documentation' },
           { value: 'batch-generate', label: 'Generate from batch input' },
           { value: 'setup', label: 'Run setup wizard' },
           { value: 'quit', label: 'Quit' },

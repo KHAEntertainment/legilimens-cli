@@ -21,118 +21,99 @@ Keep this managed block so 'openspec update' can refresh the instructions.
 
 ## Project Overview
 
-Legilimens is a CLI tool that generates lightweight gateway documentation for external dependencies (frameworks, APIs, libraries, tools) to preserve AI context windows. It detects package repositories, fetches docs via multiple sources (DeepWiki, Context7, Tavily, Firecrawl), and generates formatted markdown using local LLM or cloud AI.
+Legilimens is a pnpm monorepo for generating lightweight dependency documentation from detected repositories, package docs, and web sources. The repo contains a shared core engine, a Clack-based terminal UI, and a Fastify harness that should stay behaviorally aligned with the CLI.
+
+Current work is happening on `dmr-refactor`, but the codebase now supports both Docker Model Runner and native `llama.cpp` paths. Treat current source code and tests as truth when older docs disagree.
 
 ## Tech Stack
 
-- **Runtime**: Node.js 20 LTS, TypeScript 5.x, ESM modules
-- **UI**: Ink + @clack/prompts (full-screen TUI), chalk, ora, figlet
-- **Core**: @legilimens/core (gateway engine, detection, fetchers, AI pipeline)
-- **Harness**: @legilimens/harness-service (Fastify HTTP for parity testing)
-- **Package Manager**: pnpm workspaces
+- Runtime: Node.js 20 LTS, TypeScript 5.x, ESM
+- Monorepo: pnpm workspaces
+- CLI UX: `@clack/prompts`, `chalk`, `commander`, `figlet`, `gradient-string`, `ora`
+- Core: Tavily, axios, zod
+- Harness: Fastify
 
 ## Project Structure
 
-```
+```text
 packages/
-├─ core/              # Gateway engine, detection, AI pipeline, fetchers
-├─ cli/               # TUI application, wizard, config management
-└─ harness-service/   # Fastify HTTP harness for parity tests
-tests/integration/     # Vitest parity test suite
-docs/                  # Gateway outputs + static-backup/
-openspec/              # Change proposal workflow
-.specify/memory/       # Constitution and templates
-.resources/            # Read-only GraphRAG reference (symlink)
+  core/              shared detection, fetch, generation, parity helpers
+  cli/               interactive CLI, setup wizard, batch flows, config/secrets
+  harness-service/   Fastify parity surface
+tests/integration/   parity + smoke coverage
+docs/                generated docs, guides, templates, screenshots
+openspec/            change proposal workflow
+.resources/          read-only GraphRAG reference for Phase 3 planning
 ```
 
 ## Development Commands
 
 ```bash
-pnpm install                           # Bootstrap workspace
-pnpm --filter @legilimens/cli start    # Launch interactive CLI
-pnpm --filter @legilimens/harness-service dev  # Run parity harness
-pnpm test:integration                 # Run parity tests
-pnpm typecheck                         # TypeScript check
-pnpm lint                              # ESLint
+pnpm install
+pnpm --filter @legilimens/cli start
+pnpm --filter @legilimens/cli start -- --help
+pnpm --filter @legilimens/harness-service dev
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm test:integration
 ```
 
 ## Current Status
 
-**Active DMR (Document Model Reference) refactoring** on `dmr-refactor` branch. Key features working:
-- Tavily-first discovery pipeline with Context7 fallback
-- Local LLM support (llama.cpp preferred, DMR fallback)
-- System keychain credential storage
-- Full-screen TUI with alternate screen buffer
-- **TUI Testing**: `agent-tui` v1.0.1 (Playwright for terminals)
+- Working now: source confirmation/override flow, interactive batch generation, non-interactive batch mode, masked API key prompts, dual local-LLM config support, parity harness.
+- Still worth attention: duplicated mid-flow minimal-mode prompt, stale documentation snapshots, welcome-screen status/dashboard ideas, multi-model UX, terminology cleanup.
+- Git note: this repo may already have been synced to Linear in a prior session, but agents should verify live state through core-memory each time because memory and search results can drift.
 
-## TUI Testing with agent-tui
+## Architecture Notes
 
-`agent-tui` enables programmatic control and screenshot capture of TUI applications. Use it to verify wizard flows, generation prompts, and UI rendering without manual testing.
+- Shared behavior belongs in `@legilimens/core`; CLI and harness should stay aligned through parity tests.
+- Local LLM support has two modes:
+  - DMR: `modelName` + `apiEndpoint`
+  - `llama.cpp`: `binaryPath` + `modelPath`
+- Batch mode lives in `packages/cli/src/flows/clackBatchGenerationFlow.ts`; non-interactive execution is triggered by `LEGILIMENS_NON_INTERACTIVE=true` with `LEGILIMENS_BATCH_INPUT`.
+- `.resources/graphrag-system/` is read-only reference material only. Never modify or run build/test commands inside `.resources/`.
 
-**Quick commands:**
-```bash
-agent-tui daemon start                    # Start background daemon
-agent-tui run -- npx tsx packages/cli/src/clackApp.ts  # Run CLI in virtual PTY
-agent-tui screenshot                     # Capture current screen
-agent-tui screenshot --json              # JSON output for assertions
-agent-tui type "react"                   # Send text input
-agent-tui press Enter                    # Send key press
-agent-tui wait "Configure"               # Wait for text to appear
-agent-tui kill                           # End session
-agent-tui daemon stop                    # Stop daemon
+## Known Issues / Tech Debt
+
+- Several docs still describe older milestones as incomplete even when the code has caught up.
+- `README.md`, `docs/guides/WORKING_CLI_SETUP.md`, and older migration notes should be treated as historical unless recently updated.
+- The term "gateway" is still deeply embedded across the codebase and generated outputs.
+
+## Agent Guidelines
+
+- Prefer direct code inspection over historical planning docs when they conflict.
+- Do not use Linear CLI or native Linear MCP directly for this repo.
+- Keep doc/config changes surgical; avoid refactoring unrelated code while doing cleanup work.
+- If TUI flows change, verify with `agent-tui`.
+
+## Context & Project Management Access
+
+All Linear interaction goes through core-memory MCP via `execute_integration_action`.
+
+```text
+memory_search("legilimens-cli")
+execute_integration_action(
+  accountId: "0b4764e3-a793-4537-89b7-b26eff7b7675",
+  action: "linear_search_issues",
+  params: { query: "legilimens-cli", first: 20 }
+)
 ```
 
-**When to use:**
-- After any wizard, generation flow, or TUI layout change
-- Verify setup wizard renders correctly
-- Validate prompts display masked API keys
-- Test generation flow end-to-end
-- Regression check after refactors
+Useful actions:
+- `linear_search_issues`
+- `linear_create_issue`
+- `linear_update_issue`
+- `linear_list_projects`
+- `linear_list_cycles`
 
-**Patterns:**
-```bash
-# Full wizard test
-agent-tui daemon start
-agent-tui run -- npx tsx packages/cli/bin/legilimens.ts --setup
-agent-tui screenshot  # Verify setup screen
-agent-tui type "tvly-test-key"
-agent-tui press Enter
-agent-tui screenshot  # Verify key was accepted
-agent-tui kill
-agent-tui daemon stop
-```
+Linear accountId: `0b4764e3-a793-4537-89b7-b26eff7b7675`
 
-## Known Issues
+## Landing the Plane
 
-- Setup wizard may loop if `~/.legilimens/config.json` missing `setupCompleted: true`
-- Disable TUI with `LEGILIMENS_DISABLE_TUI=true` for debugging
-- Pre-existing type errors in `clackGenerationFlow.ts` (AsyncDetectionResult properties)
-
-## Linear Access (Agent Standard)
-
-All Linear work goes through **core-memory MCP** via `execute_integration_action`.
-
-**Session start pattern:**
-1. `memory_search("legilimens")`
-2. `execute_integration_action(accountId: "0b4764e3-a793-4537-89b7-b26eff7b7675", action: "linear_search_issues", params: {query: "legilimens", first: 20})`
-
-**Available actions:** `linear_search_issues`, `linear_create_issue`, `linear_update_issue`, `linear_create_project`, `linear_list_cycles`
-
-**Linear accountId:** `0b4764e3-a793-4537-89b7-b26eff7b7675`
-
-## Landing the Plane (Session Completion)
-
-Work is NOT complete until `git push` succeeds.
-
-1. File issues for remaining work via core-memory
-2. Run quality gates (tests, typecheck)
-3. Update issue status
-4. `git pull --rebase && git push` (MANDATORY)
-5. Verify clean git status
-
-## Quick Links
-
-- Full technical docs: `AGENTS.md`
-- Constitution: `.specify/memory/constitution.md`
-- Quickstart: `docs/quickstart.md`
-- Troubleshooting: `docs/guides/WORKING_CLI_SETUP.md`
+At session end:
+1. File follow-up issues for real gaps.
+2. Run quality gates if code changed.
+3. Update issue status.
+4. Push authorized implementation work to remote.
+5. Leave a clean handoff with any remaining risks or drift.
