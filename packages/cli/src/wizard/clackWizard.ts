@@ -222,8 +222,14 @@ export async function runClackWizard(): Promise<WizardResult> {
           cancel('Setup cancelled');
           return { success: false };
         }
-        
-        modelName = modelNameInput;
+
+        // Trim and validate model name
+        const trimmedModelName = modelNameInput.trim();
+        if (!trimmedModelName) {
+          cancel('Model name cannot be empty');
+          return { success: false };
+        }
+        modelName = trimmedModelName;
 
         const apiEndpointInput = await text({
           message: 'Enter DMR API endpoint',
@@ -235,15 +241,33 @@ export async function runClackWizard(): Promise<WizardResult> {
           cancel('Setup cancelled');
           return { success: false };
         }
-        
-        apiEndpoint = apiEndpointInput;
+
+        // Trim and normalize endpoint
+        let trimmedEndpoint = apiEndpointInput.trim();
+        if (!trimmedEndpoint) {
+          cancel('API endpoint cannot be empty');
+          return { success: false };
+        }
+
+        // Prepend http:// if no scheme provided
+        if (!trimmedEndpoint.includes('://')) {
+          trimmedEndpoint = `http://${trimmedEndpoint}`;
+        }
+
+        // Validate URL format
+        try {
+          new URL(trimmedEndpoint);
+          apiEndpoint = trimmedEndpoint;
+        } catch (error) {
+          cancel('Invalid API endpoint URL format');
+          return { success: false };
+        }
       } else if (typeof useDefaults === 'symbol') {
         cancel('Setup cancelled');
         return { success: false };
       } else {
-        // Keep defaults but preserve any previously customized values if they exist
-        modelName = current.localLlm?.modelName || modelName;
-        apiEndpoint = current.localLlm?.apiEndpoint || apiEndpoint;
+        // User chose defaults - use the default values initialized above
+        // (modelName and apiEndpoint are already set to defaults at lines 201-202)
       }
     }
 

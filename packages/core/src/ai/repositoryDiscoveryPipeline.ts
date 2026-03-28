@@ -166,7 +166,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
         console.debug(`[pipeline] Consulting LLM with ${items.length} candidates, prompt length: ${llmPrompt.length} chars`);
       }
 
-      const decision = await runLocalJson<any>({ prompt: llmPrompt, schema: discoverySchema });
+      const decision = await runLocalJson({ prompt: llmPrompt, schema: discoverySchema });
       
       if (process.env.LEGILIMENS_DEBUG) {
         console.debug(`[pipeline] LLM response: ${decision.success ? 'success' : 'failed'}, attempts: ${decision.attempts}, duration: ${decision.durationMs}ms`);
