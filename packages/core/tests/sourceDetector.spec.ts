@@ -468,14 +468,14 @@ describe('detectSourceTypeWithAI', () => {
   describe('fallback behavior', () => {
     it('falls back to pattern detection if AI pipeline fails', async () => {
       // Temporarily override mock to throw error
-      vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockRejectedValueOnce(new Error('AI pipeline failed'));
-      
+      const mockSpy = vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockRejectedValueOnce(new Error('AI pipeline failed'));
+
       const result = await detectSourceTypeWithAI('unknown-package');
       expect(result.aiAssisted).toBe(false);
       expect(result.sourceType).toBe('unknown');
-      
-      // Restore mock
-      vi.restoreAllMocks();
+
+      // Reset only this specific spy to restore the beforeAll mock
+      mockSpy.mockRestore();
     });
   });
 });

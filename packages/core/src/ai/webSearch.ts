@@ -2,6 +2,13 @@ import { tavily, type TavilySearchOptions } from '@tavily/core';
 import { getRuntimeConfig } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
 
+interface TavilyResultItem {
+  title: string;
+  url: string;
+  score?: number;
+  content?: string;
+}
+
 export interface SearchResultItem {
   title: string;
   url: string;
@@ -68,12 +75,12 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
     console.debug(`[webSearch] Tavily response received: ${response.results?.length || 0} results`);
     console.debug(`[webSearch] Tavily answer: ${response.answer?.slice(0, 150) || 'none'}...`);
     if (response.results && response.results.length > 0) {
-      const topRaw = response.results.slice(0, 3).map((r: any) => `${r.title} (${r.score?.toFixed(2)})`).join(', ');
+      const topRaw = response.results.slice(0, 3).map((r: TavilyResultItem) => `${r.title} (${r.score?.toFixed(2)})`).join(', ');
       console.debug(`[webSearch] Top 3 raw results: ${topRaw}`);
     }
   }
 
-  const items: SearchResultItem[] = (response.results || []).map((r: any) => ({
+  const items: SearchResultItem[] = (response.results || []).map((r: TavilyResultItem) => ({
     title: r.title,
     url: r.url,
     score: r.score,

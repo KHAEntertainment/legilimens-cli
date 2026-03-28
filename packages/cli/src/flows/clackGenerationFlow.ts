@@ -174,25 +174,26 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
           throw error;
         }
       } else {
-        // User selected a specific package - re-run detection
-        debugLogger.log('GenerationFlow', 'Re-running detection with selected package', { packageName: String(selectedPackage) });
-        
+        // User selected a specific package - use it directly without re-running selection
+        debugLogger.log('GenerationFlow', 'Using selected package directly', { packageName: String(selectedPackage) });
+
         const s4 = spinner();
-        s4.start('Re-detecting source with selected package');
-        
+        s4.start('Detecting source for selected package');
+
         try {
-          detection = await detectSourceTypeWithAI(String(selectedPackage), { enableSelection: true });
-          debugLogger.log('GenerationFlow', 'Re-detection complete', { detection });
-          
+          // Call with enableSelection: false to get deterministic result for the chosen package
+          detection = await detectSourceTypeWithAI(String(selectedPackage), { enableSelection: false });
+          debugLogger.log('GenerationFlow', 'Detection complete for selected package', { detection });
+
           // Update dependent variables
           sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
           dependencyType = detection.dependencyType || 'other';
           repositoryUrl = detection.repositoryUrl;
-          
+
           s4.stop(`Source detected: ${detection.sourceType}, Type: ${dependencyType}${sourceHint}`);
         } catch (error) {
           debugLogger.error('GenerationFlow', error instanceof Error ? error : new Error(String(error)), { selectedPackage: String(selectedPackage) });
-          s4.stop('Re-detection failed');
+          s4.stop('Detection failed');
           throw error;
         }
       }
@@ -234,23 +235,24 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
     }
 
     // Manual URL fallback when detection returns unknown
-    if (detection.sourceType === 'unknown' && !userDeclinedContext7) {
-      note('Could not auto-detect source. Please provide the documentation URL or GitHub identifier.\n\nExamples: https://docs.example.com or https://github.com/owner/repo', 'Detection Failed');
-      
+    if (detection.sourceType === 'unknown') {
+      note('Could not auto-detect source. Please provide the documentation URL or GitHub identifier.\n\nExamples: https://docs.example.com or https://github.com/owner/repo or owner/repo', 'Detection Failed');
+
       const manualUrl = await text({
         message: 'Documentation URL or GitHub identifier:',
-        placeholder: 'e.g., https://docs.strapi.io or https://github.com/strapi/strapi',
+        placeholder: 'e.g., https://docs.strapi.io or https://github.com/strapi/strapi or strapi/strapi',
         validate: (value) => {
           if (!value || !value.trim()) {
             return 'URL or GitHub identifier is required';
           }
-          // Check if it's a URL (contains ://) or GitHub URL (contains github.com/)
+          // Check if it's a URL (contains ://) or GitHub URL (contains github.com/) or owner/repo format
           const trimmed = value.trim();
           const isUrl = trimmed.includes('://');
           const isGithubUrl = trimmed.includes('github.com/');
-          
-          if (!isUrl && !isGithubUrl) {
-            return 'Please provide a valid URL (https://...) or GitHub URL containing github.com/';
+          const isOwnerRepo = /^[^\/\s]+\/[^\/\s]+$/.test(trimmed);
+
+          if (!isUrl && !isGithubUrl && !isOwnerRepo) {
+            return 'Please provide a valid URL (https://...), GitHub URL containing github.com/, or owner/repo identifier';
           }
         },
       });
