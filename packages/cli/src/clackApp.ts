@@ -44,14 +44,16 @@ export async function runClackApp(): Promise<void> {
 
   // Check if running in a TTY environment
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
+  const isNonInteractive = process.env.LEGILIMENS_NON_INTERACTIVE === 'true';
   
-  if (!isTTY) {
+  if (!isTTY && !isNonInteractive) {
     console.error('Error: Legilimens requires an interactive terminal (TTY).');
     console.error('This usually happens when:');
     console.error('  - Running in a non-interactive environment (CI/CD)');
     console.error('  - Output is being piped or redirected');
     console.error('  - Running through certain process managers');
-    console.error('\nTry running directly in your terminal instead.');
+    console.error('\nFor non-interactive environments, set LEGILIMENS_NON_INTERACTIVE=true');
+    console.error('Or run setup first, then use: LEGILIMENS_NON_INTERACTIVE=true legilimens generate <dependency>');
     throw new Error('TTY required');
   }
 
