@@ -30,7 +30,7 @@ const parseModeFromEnv = (env: NodeJS.ProcessEnv): CliMode => {
   return 'default';
 };
 
-const resolveMode = (args: string[], env: NodeJS.ProcessEnv): CliMode => {
+export const resolveMode = (args: string[], env: NodeJS.ProcessEnv): CliMode => {
   if (args.includes(FLAG_LOW_CONTRAST)) {
     return 'low-contrast';
   }
