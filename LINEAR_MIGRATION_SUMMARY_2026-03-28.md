@@ -82,7 +82,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 3: Restore Pre-Phase-4 Batch TUI Integration
+### Issue 2: Restore Pre-Phase-4 Batch TUI Integration
 
 - **Type:** Feature
 - **Priority:** High
@@ -92,7 +92,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 4: Pre-Retrieval Source Correction Step
+### Issue 3: Pre-Retrieval Source Correction Step
 
 - **Type:** Feature
 - **Priority:** Medium
@@ -102,7 +102,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 5: Welcome Screen Status Dashboard
+### Issue 4: Welcome Screen Status Dashboard
 
 - **Type:** Feature
 - **Priority:** Medium
@@ -112,7 +112,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 6: Multi-Model Selection
+### Issue 5: Multi-Model Selection
 
 - **Type:** Feature
 - **Priority:** Medium
@@ -122,7 +122,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 7: Stale Branch Cleanup
+### Issue 6: Stale Branch Cleanup
 
 - **Type:** Chore
 - **Priority:** Medium
@@ -136,7 +136,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 8: CLAUDE.md Rewrite per Agent Standards
+### Issue 7: CLAUDE.md Rewrite per Agent Standards
 
 - **Type:** Chore
 - **Priority:** High
@@ -146,7 +146,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 9: Verify GitHub Remote Tracking
+### Issue 8: Verify GitHub Remote Tracking
 
 - **Type:** Chore
 - **Priority:** Medium
@@ -156,7 +156,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 10: GraphRAG Phase 3 Integration Spike
+### Issue 9: GraphRAG Phase 3 Integration Spike
 
 - **Type:** Spike
 - **Priority:** Low
@@ -166,7 +166,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 11: Parity Test Coverage Expansion
+### Issue 10: Parity Test Coverage Expansion
 
 - **Type:** Feature
 - **Priority:** Medium
@@ -176,7 +176,7 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 
 ---
 
-### Issue 12: "Gateway" Terminology Removal
+### Issue 11: "Gateway" Terminology Removal
 
 - **Type:** Chore
 - **Priority:** Low
@@ -195,18 +195,18 @@ The Pre-Phase-4 CLI Refactoring plan (`docs/PRE-PHASE-4-CLI-REFACTORING.md`, dat
 - Issue #1: Complete Pre-Phase-4 UX Gaps (CRITICAL)
 - Issue #2: Restore Batch TUI Integration
 - Issue #3: Pre-Retrieval Source Correction
-- Issue #8: CLAUDE.md Rewrite — ALREADY DONE
-- Issue #9: GitHub Remote Verification — ALREADY VERIFIED
+- Issue #7: CLAUDE.md Rewrite — ALREADY DONE
+- Issue #8: GitHub Remote Verification — ALREADY VERIFIED
 
 ### Sprint 2: Dashboard & Model Selection
 - Issue #4: Welcome Screen Status Dashboard
 - Issue #5: Multi-Model Selection
-- Issue #7: Stale Branch Cleanup
+- Issue #6: Stale Branch Cleanup
 
 ### Sprint 3: Testing & Future
-- Issue #11: Parity Test Coverage Expansion
-- Issue #10: GraphRAG Phase 3 Integration Spike
-- Issue #12: "Gateway" Terminology Removal (stretch goal)
+- Issue #10: Parity Test Coverage Expansion
+- Issue #9: GraphRAG Phase 3 Integration Spike
+- Issue #11: "Gateway" Terminology Removal (stretch goal)
 
 ---
 

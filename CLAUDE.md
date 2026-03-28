@@ -59,8 +59,8 @@ pnpm lint                              # ESLint
 ## Current Status
 
 **Active DMR (Document Model Reference) refactoring** on `dmr-refactor` branch. Key features working:
-- Tavily-first discovery pipeline with Context7 fallback
-- Local LLM support (llama.cpp preferred, DMR fallback)
+- Context7-first detection pipeline with Tavily fallback
+- DMR-focused configuration and fallback (Docker-based local LLM)
 - System keychain credential storage
 - Full-screen TUI with alternate screen buffer
 - **TUI Testing**: `agent-tui` v1.0.1 (Playwright for terminals)
@@ -122,12 +122,18 @@ All Linear work goes through **core-memory MCP** via `execute_integration_action
 
 ## Landing the Plane (Session Completion)
 
-Work is NOT complete until `git push` succeeds.
+**For authorized implementation sessions**: Work is NOT complete until `git push` succeeds.
 
 1. File issues for remaining work via core-memory
 2. Run quality gates (tests, typecheck)
 3. Update issue status
-4. `git pull --rebase && git push` (MANDATORY)
+4. **Push to remote** (authorized implementation sessions only):
+   ```bash
+   git pull --rebase
+   bd sync
+   git push
+   git status  # MUST show "up to date with origin"
+   ```
 5. Verify clean git status
 
 ## Quick Links
