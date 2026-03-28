@@ -193,12 +193,12 @@ export async function searchContext7(
               }
               return null;
             })
-            .filter((item: { name: string; score: number; url: string } | null): item is { name: string; score: number; url: string } => item !== null);
+            .filter((item): item is { name: string; score: number; url: string } => item !== null);
 
           if (process.env.LEGILIMENS_DEBUG) {
             console.log(`[context7] Search completed: ${sanitizedResults.length} results for "${query}"`);
             if (sanitizedResults.length > 0) {
-              const topMatches = sanitizedResults.slice(0, 3).map((r: { name: string; score: number; url: string }) => `${r.name} (${r.score})`).join(', ');
+              const topMatches = sanitizedResults.slice(0, 3).map(r => `${r.name} (${r.score})`).join(', ');
               console.log(`[context7] Top matches: ${topMatches}`);
             }
           }

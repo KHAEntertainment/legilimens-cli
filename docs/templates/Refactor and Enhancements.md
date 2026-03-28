@@ -100,10 +100,14 @@ Similar examples could be appended to AGENTS.md, Gemini.md, .cursorrules, warp.m
 
 3) Major Function Addition: local enhanced graphRAG
 <<<<<<< HEAD
+<<<<<<< HEAD
 ## Important! We are not implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
 =======
 ## Important! We are not planning and implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
 >>>>>>> ee38cb8 (feat: enhance DMR configuration with customizable settings and graceful LLM fallback)
+=======
+## Important! We are not implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
+>>>>>>> fef0f81 (fix: resolve vitest config to include core unit tests)
 
 I made a typescript based advanced graphRAG solution with Vercel AI SDK and llama.cpp support tailored to be incorporated into this project as well as operate standalone. We will work on this as it's own dedicated phase/plan but be aware that it will be the next step after these modifications. 
 To get more knowledge about this project: https://deepwiki.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk
