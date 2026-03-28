@@ -60,15 +60,53 @@ pnpm lint                              # ESLint
 
 **Active DMR (Document Model Reference) refactoring** on `dmr-refactor` branch. Key features working:
 - Tavily-first discovery pipeline with Context7 fallback
-- Local LLM support (llama.cpp with phi-4 GGUF)
+- Local LLM support (llama.cpp preferred, DMR fallback)
 - System keychain credential storage
 - Full-screen TUI with alternate screen buffer
+- **TUI Testing**: `agent-tui` v1.0.1 (Playwright for terminals)
+
+## TUI Testing with agent-tui
+
+`agent-tui` enables programmatic control and screenshot capture of TUI applications. Use it to verify wizard flows, generation prompts, and UI rendering without manual testing.
+
+**Quick commands:**
+```bash
+agent-tui daemon start                    # Start background daemon
+agent-tui run -- npx tsx packages/cli/src/clackApp.ts  # Run CLI in virtual PTY
+agent-tui screenshot                     # Capture current screen
+agent-tui screenshot --json              # JSON output for assertions
+agent-tui type "react"                   # Send text input
+agent-tui press Enter                    # Send key press
+agent-tui wait "Configure"               # Wait for text to appear
+agent-tui kill                           # End session
+agent-tui daemon stop                    # Stop daemon
+```
+
+**When to use:**
+- After any wizard, generation flow, or TUI layout change
+- Verify setup wizard renders correctly
+- Validate prompts display masked API keys
+- Test generation flow end-to-end
+- Regression check after refactors
+
+**Patterns:**
+```bash
+# Full wizard test
+agent-tui daemon start
+agent-tui run -- npx tsx packages/cli/bin/legilimens.ts --setup
+agent-tui screenshot  # Verify setup screen
+agent-tui type "tvly-test-key"
+agent-tui press Enter
+agent-tui screenshot  # Verify key was accepted
+agent-tui kill
+agent-tui daemon stop
+```
 
 ## Known Issues
 
 - Setup wizard may loop if `~/.legilimens/config.json` missing `setupCompleted: true`
-- Local LLM binary at nested path `~/.legilimens/bin/build/bin/llama-cli`
 - Disable TUI with `LEGILIMENS_DISABLE_TUI=true` for debugging
+- Pre-existing type errors in `clackGenerationFlow.ts` (AsyncDetectionResult properties)
 
 ## Linear Access (Agent Standard)
 
