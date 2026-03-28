@@ -116,13 +116,14 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
   // 2. Official: Authoritative but may be incomplete or outdated
   // 3. DeepWiki: Good for GitHub repos
   // 4. Discussion: Community content, less authoritative than official sources
+  // Weight values are small floats (0.0-0.15) to act as a soft bias rather than overwhelming Tavily scores (0-1)
   const weight = (s?: SearchResultItem['sourceHint']) => {
     switch (s) {
-      case 'github': return 95;     // Highest priority - open-source projects
-      case 'official': return 90;   // Second priority - official documentation
-      case 'deepwiki': return 85;   // Third priority - DeepWiki indexes
-      case 'discussion': return 60; // Fourth priority - community/forum discussions
-      default: return 50;           // Lowest priority - other sources
+      case 'github': return 0.15;     // Highest priority - open-source projects
+      case 'official': return 0.10;   // Second priority - official documentation
+      case 'deepwiki': return 0.08;   // Third priority - DeepWiki indexes
+      case 'discussion': return 0.02; // Fourth priority - community/forum discussions
+      default: return 0.0;            // Lowest priority - other sources
     }
   };
 
@@ -130,9 +131,9 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
 
   // Log ranking and sorting decisions
   if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Ranking applied: GitHub(95) > Official(90) > DeepWiki(85) > Discussion(60) > Other(50)`);
+    console.debug(`[webSearch] Ranking applied: GitHub(+0.15) > Official(+0.10) > DeepWiki(+0.08) > Discussion(+0.02) > Other(+0.0)`);
     if (sortedItems.length > 0) {
-      const topSorted = sortedItems.slice(0, 3).map(i => 
+      const topSorted = sortedItems.slice(0, 3).map(i =>
         `${i.title} [${i.sourceHint}] (weighted: ${(weight(i.sourceHint) + (i.score ?? 0)).toFixed(2)})`
       ).join(', ');
       console.debug(`[webSearch] Top 3 sorted: ${topSorted}`);

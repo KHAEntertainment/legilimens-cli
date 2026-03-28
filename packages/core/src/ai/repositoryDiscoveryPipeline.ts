@@ -59,7 +59,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
       if (process.env.LEGILIMENS_DEBUG) {
         console.debug(`[pipeline] Extracting GitHub identifier from URL: ${sourceRecommendation.primaryUrl}`);
       }
-      const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+      const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^/?#]+)/);
       if (match) {
         identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
         if (process.env.LEGILIMENS_DEBUG) {
@@ -104,7 +104,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
   // (This is a fallback if Step 1A didn't trigger)
   if (items.length > 0 && items[0].sourceHint === 'github' && (items[0].score ?? 0) > 0.75) {
     const topResult = items[0];
-    const match = topResult.url.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+    const match = topResult.url.match(/github\.com\/([^\/]+\/[^/?#]+)/);
     
     if (match) {
       const identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
@@ -213,7 +213,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
       
       let identifier = natural;
       if (sourceRecommendation.sourceType === 'github') {
-        const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+        const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^/?#]+)/);
         if (match) {
           identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
         }
@@ -241,7 +241,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
                       topResult.sourceHint === 'github' ? 'github' : 
                       topResult.sourceHint === 'official' ? 'url' : 'unknown';
     
-    const match = topResult.url.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
+    const match = topResult.url.match(/github\.com\/([^\/]+\/[^/?#]+)/);
     const identifier = match ? match[1].replace(/\.git$/, '').replace(/\/$/, '') : natural;
     
     return {
