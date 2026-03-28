@@ -49,3 +49,6 @@ claude-config-editor/
 
 # Letta agent artifacts
 .letta/
+
+# Beads task tracker (local-only)
+.beads/
