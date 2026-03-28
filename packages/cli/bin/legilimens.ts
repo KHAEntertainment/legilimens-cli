@@ -46,7 +46,6 @@ if (args.includes('--debug')) {
   process.env.LEGILIMENS_DEBUG = 'true';
 }
 
-<<<<<<< HEAD
 // Handle --batch flag (positional argument: file path or inline identifiers)
 const batchIndex = args.indexOf('--batch');
 if (batchIndex !== -1) {
@@ -62,17 +61,14 @@ if (batchIndex !== -1) {
 }
 
 // Handle positional @file argument as batch input (shorthand)
-// Exclude scoped npm packages like @vercel/ai (they contain '/')
 if (batchIndex === -1) {
   const firstPositional = args.find(a => !a.startsWith('-'));
-  if (firstPositional?.startsWith('@') && !firstPositional.includes('/')) {
+  if (firstPositional?.startsWith('@')) {
     process.env.LEGILIMENS_BATCH_INPUT = firstPositional;
     process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
   }
 }
 
-=======
->>>>>>> c6452af (fix: complete Pre-Phase-4 UX gaps (KHA-125))
 // Handle --setup flag
 if (args.includes('--setup')) {
   process.env.LEGILIMENS_FORCE_SETUP = 'true';

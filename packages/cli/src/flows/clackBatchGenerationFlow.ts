@@ -6,9 +6,9 @@ import {
   detectSourceTypeWithAI,
 } from '@legilimens/core';
 import type { GatewayGenerationRequest } from '@legilimens/core';
-import { loadUserConfig } from '../config/userConfig.js';
+import { loadUserConfig, isSetupRequired } from '../config/userConfig.js';
 import { parseBatchInput, type ParsedBatchInput } from '../utils/batchInputParser.js';
-import { classifyBatch } from '../utils/dependencyClassifier.js';
+import { classifyBatch, type ClassifiedDependency } from '../utils/dependencyClassifier.js';
 import { debugLogger } from '../utils/debugLogger.js';
 
 export interface ClackFlowResult {
@@ -32,11 +32,12 @@ export async function runClackBatchGenerationFlow(
   templatePath: string,
   targetDirectory: string,
 ): Promise<ClackFlowResult> {
-  intro('Batch Documentation Generation');
+  intro('Batch Gateway Generation');
 
   try {
     const userConfig = loadUserConfig();
     const runtimeConfig = getRuntimeConfig();
+    const setupRequired = await isSetupRequired();
 
     // Pre-flight check
     const tavilyPresent = Boolean(process.env.TAVILY_API_KEY || userConfig.apiKeys.tavily);
@@ -109,8 +110,19 @@ export async function runClackBatchGenerationFlow(
       return { success: false, error: 'Operation cancelled by user' };
     }
 
-    // Minimal mode — resolved from flag / env / config at startup
-    const minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
+    // Minimal mode
+    let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
+    if (!minimalMode) {
+      const response = await confirm({
+        message: 'Enable minimal mode (low-contrast, ANSI-free)?',
+        initialValue: false,
+      });
+      if (typeof response === 'symbol') {
+        cancel('Cancelled');
+        return { success: false, error: 'Operation cancelled by user' };
+      }
+      minimalMode = Boolean(response);
+    }
 
     // Process each dependency
     const results: BatchItemResult[] = [];
@@ -131,7 +143,7 @@ export async function runClackBatchGenerationFlow(
         const detection = await detectSourceTypeWithAI(dep.identifier, { enableSelection: false });
         repositoryUrl = detection.repositoryUrl;
         if (detection.normalizedIdentifier) normalizedId = detection.normalizedIdentifier;
-        if (detection.sourceType && detection.sourceType !== 'unknown') sourceType = detection.sourceType;
+        if (detection.sourceType) sourceType = detection.sourceType;
       } catch {
         // Fall back to classifier results if AI detection fails
         debugLogger.log('BatchFlow', `AI detection failed for ${dep.identifier}, using classifier fallback`);
@@ -193,7 +205,7 @@ export async function runClackBatchGenerationFlow(
         ? [`Failed (${failed.length}): ${failed.map(r => `${r.identifier} (${r.error})`).join(', ')}`]
         : []),
       '',
-      `Artifacts: ${succeeded.length} documentation files written`,
+      `Artifacts: ${succeeded.length} gateway docs written`,
     ];
 
     note(summaryLines.filter(Boolean).join('\n'), 'Batch Generation Complete');
@@ -218,6 +230,7 @@ export async function runNonInteractiveBatch(
 ): Promise<ClackFlowResult> {
   try {
     await loadUserConfig();
+    const runtimeConfig = getRuntimeConfig();
 
     // Parse
     const parsed = await parseBatchInput(batchInput);
@@ -249,7 +262,7 @@ export async function runNonInteractiveBatch(
         const detection = await detectSourceTypeWithAI(dep.identifier, { enableSelection: false });
         repositoryUrl = detection.repositoryUrl;
         if (detection.normalizedIdentifier) normalizedId = detection.normalizedIdentifier;
-        if (detection.sourceType && detection.sourceType !== 'unknown') sourceType = detection.sourceType;
+        if (detection.sourceType) sourceType = detection.sourceType;
       } catch {
         // Fall back to classifier results
       }
@@ -269,14 +282,9 @@ export async function runNonInteractiveBatch(
       };
 
       try {
-        const res = await generateGatewayDoc(request);
+        await generateGatewayDoc(request);
         const durationMs = Date.now() - itemStart;
-        results.push({
-          identifier: dep.normalizedIdentifier,
-          success: true,
-          durationMs,
-          artifact: res.artifacts?.[0]
-        });
+        results.push({ identifier: dep.normalizedIdentifier, success: true, durationMs });
         console.log(` done (${durationMs}ms)`);
       } catch (error) {
         const durationMs = Date.now() - itemStart;
