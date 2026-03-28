@@ -284,15 +284,21 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       // The orchestrator will attempt Context7/Firecrawl as fallback
     }
 
-    // Step 3: Minimal mode
-    const minimalMode = await confirm({
-      message: 'Enable minimal mode (low-contrast, ANSI-free)?',
-      initialValue: false,
-    });
+    // Step 3: Minimal mode - skip if already passed via --minimal flag
+    let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
+    
+    if (!minimalMode) {
+      const response = await confirm({
+        message: 'Enable minimal mode (low-contrast, ANSI-free)?',
+        initialValue: false,
+      });
 
-    if (typeof minimalMode === 'symbol') {
-      outro('Cancelled');
-      return { success: false, error: 'Operation cancelled by user' };
+      if (typeof response === 'symbol') {
+        outro('Cancelled');
+        return { success: false, error: 'Operation cancelled by user' };
+      }
+      
+      minimalMode = Boolean(response);
     }
 
     // Step 4: Generate (multi-stage progress)

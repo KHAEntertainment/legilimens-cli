@@ -36,6 +36,16 @@ if (args.includes('--version') || args.includes('-v')) {
   process.exit(0);
 }
 
+// Handle --minimal flag
+if (args.includes('--minimal')) {
+  process.env.LEGILIMENS_MINIMAL_MODE = 'true';
+}
+
+// Handle --debug flag
+if (args.includes('--debug')) {
+  process.env.LEGILIMENS_DEBUG = 'true';
+}
+
 // Handle --setup flag
 if (args.includes('--setup')) {
   process.env.LEGILIMENS_FORCE_SETUP = 'true';
