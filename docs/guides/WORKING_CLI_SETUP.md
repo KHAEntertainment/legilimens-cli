@@ -1,10 +1,14 @@
 # Working CLI Setup - Status & Configuration
 
-## 🎉 Current Status: FULLY FUNCTIONAL
+> **ARCHIVE NOTICE** — This document is a historical snapshot from early development.
+> It contains machine-specific paths and outdated status. For current setup instructions,
+> see the main `README.md`. This file is retained for reference only.
 
-As of commit `99932db`, the Legilimens CLI is working correctly with all major issues resolved.
+## Current Status (at time of writing: commit `99932db`)
 
-## ✅ Issues Resolved
+The Legilimens CLI foundation was confirmed functional at this snapshot.
+
+## Issues Resolved (historical)
 
 ### 1. Setup Wizard No Longer Forces Re-runs
 - **Problem**: Wizard ran after every refactor, forcing re-downloads
