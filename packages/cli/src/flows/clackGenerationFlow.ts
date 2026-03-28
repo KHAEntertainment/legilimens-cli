@@ -414,12 +414,12 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
     s2.stop('Documentation fetched');
 
     const s3 = spinner();
-    s3.start('Writing gateway files');
-    s3.stop('Gateway files written');
+    s3.start('Writing documentation files');
+    s3.stop('Documentation files written');
 
     // Step 5: Summary
     const summaryLines = [
-      `Gateway doc: ${result.metadata.gatewayRelativePath}`,
+      `Quick reference: ${result.metadata.gatewayRelativePath}`,
       `Static backup: ${result.metadata.staticBackupRelativePath}`,
       result.metadata.deepWikiRepository ? `DeepWiki: ${result.metadata.deepWikiRepository}` : '',
       `Duration: ${result.metadata.generationDurationMs}ms`,

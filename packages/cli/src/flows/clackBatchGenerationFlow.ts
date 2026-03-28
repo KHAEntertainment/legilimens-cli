@@ -32,7 +32,7 @@ export async function runClackBatchGenerationFlow(
   templatePath: string,
   targetDirectory: string,
 ): Promise<ClackFlowResult> {
-  intro('Batch Gateway Generation');
+  intro('Batch Documentation Generation');
 
   try {
     const userConfig = loadUserConfig();
@@ -194,7 +194,7 @@ export async function runClackBatchGenerationFlow(
         ? [`Failed (${failed.length}): ${failed.map(r => `${r.identifier} (${r.error})`).join(', ')}`]
         : []),
       '',
-      `Artifacts: ${succeeded.length} gateway docs written`,
+      `Artifacts: ${succeeded.length} documentation files written`,
     ];
 
     note(summaryLines.filter(Boolean).join('\n'), 'Batch Generation Complete');
