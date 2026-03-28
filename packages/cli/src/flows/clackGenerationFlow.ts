@@ -375,22 +375,9 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       sourceConfirmed = true; // accept path
     }
 
-    // Step 3: Minimal mode - skip if already passed via --minimal flag
-    let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
-    
-    if (!minimalMode) {
-      const response = await confirm({
-        message: 'Enable minimal mode (low-contrast, ANSI-free)?',
-        initialValue: false,
-      });
-
-      if (typeof response === 'symbol') {
-        outro('Cancelled');
-        return { success: false, error: 'Operation cancelled by user' };
-      }
-      
-      minimalMode = Boolean(response);
-    }
+    // Step 3: Minimal mode — resolved from flag / env / config at startup
+    // (LEGILIMENS_MINIMAL_MODE is normalised by loadCliEnvironment)
+    const minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
 
     // Step 4: Generate (multi-stage progress)
     const s1 = spinner();

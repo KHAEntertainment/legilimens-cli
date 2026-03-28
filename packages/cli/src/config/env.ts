@@ -118,6 +118,12 @@ export const loadCliEnvironment = async (
   const runtime = assertSupportedNode(env);
   const mode = resolveMode(args, env);
 
+  // Normalize mode into LEGILIMENS_MINIMAL_MODE so downstream flows
+  // can check a single env var regardless of how the user opted in.
+  if (mode === 'minimal') {
+    env.LEGILIMENS_MINIMAL_MODE = 'true';
+  }
+
   return {
     runtime,
     mode,
