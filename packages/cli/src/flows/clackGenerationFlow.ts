@@ -172,28 +172,28 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
           throw error;
         }
       } else {
-        // User selected a specific package - use it directly without re-running selection
+        // User selected a specific package - derive detection directly from selection
         debugLogger.log('GenerationFlow', 'Using selected package directly', { packageName: String(selectedPackage) });
 
-        const s4 = spinner();
-        s4.start('Detecting source for selected package');
+        // Find the selected result to get its URL
+        const selectedResult = detection.context7Results?.find((r: { name: string }) => r.name === selectedPackage);
 
-        try {
-          // Call with enableSelection: false to get deterministic result for the chosen package
-          detection = await detectSourceTypeWithAI(String(selectedPackage), { enableSelection: false });
-          debugLogger.log('GenerationFlow', 'Detection complete for selected package', { detection });
+        // Update detection values directly from user's selection (skip re-detection)
+        detection = {
+          sourceType: 'npm',
+          normalizedIdentifier: String(selectedPackage),
+          confidence: 'high',
+          aiAssisted: false,
+          dependencyType: 'library',
+          repositoryUrl: selectedResult?.url
+        };
 
-          // Update dependent variables
-          sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
-          dependencyType = detection.dependencyType || 'other';
-          repositoryUrl = detection.repositoryUrl;
+        // Update dependent variables
+        sourceHint = '';
+        dependencyType = 'library';
+        repositoryUrl = selectedResult?.url;
 
-          s4.stop(`Source detected: ${detection.sourceType}, Type: ${dependencyType}${sourceHint}`);
-        } catch (error) {
-          debugLogger.error('GenerationFlow', error instanceof Error ? error : new Error(String(error)), { selectedPackage: String(selectedPackage) });
-          s4.stop('Detection failed');
-          throw error;
-        }
+        debugLogger.log('GenerationFlow', 'Detection derived from user selection', { detection });
       }
     }
 
@@ -312,6 +312,12 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       }
 
       if (sourceAction === 'override') {
+        // Snapshot current detection state before override
+        const snapshotDetection = detection;
+        const snapshotDependencyType: string = dependencyType;
+        const snapshotRepositoryUrl: string | null | undefined = repositoryUrl;
+        const snapshotSourceHint: string | null = sourceHint;
+
         const overrideInput = await text({
           message: 'Enter correct URL or identifier:',
           placeholder: 'e.g., https://github.com/owner/repo or owner/repo',
@@ -349,8 +355,18 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
             });
 
             if (typeof context7Choice === 'symbol') {
-              // Use whatever we have — loop back to summary
-            } else if (context7Choice !== '__none__') {
+              // User cancelled - restore snapshot
+              detection = snapshotDetection;
+              dependencyType = snapshotDependencyType;
+              repositoryUrl = snapshotRepositoryUrl;
+              sourceHint = snapshotSourceHint;
+            } else if (context7Choice === '__none__') {
+              // User declined Context7 suggestions - restore snapshot
+              detection = snapshotDetection;
+              dependencyType = snapshotDependencyType;
+              repositoryUrl = snapshotRepositoryUrl;
+              sourceHint = snapshotSourceHint;
+            } else {
               // Re-detect with selected package
               const selSpinner = spinner();
               selSpinner.start('Confirming selection');

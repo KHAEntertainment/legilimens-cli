@@ -202,7 +202,16 @@ export async function detectSourceTypeWithAI(
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug(`[detector] High-confidence ${staticResult.sourceType} match, skipping AI pipeline`);
     }
-    return { ...staticResult, aiAssisted: false };
+
+    // Populate repositoryUrl for GitHub sources
+    let repositoryUrl: string | undefined;
+    if (staticResult.sourceType === 'github') {
+      repositoryUrl = `https://github.com/${staticResult.normalizedIdentifier}`;
+    } else if (staticResult.sourceType === 'url') {
+      repositoryUrl = staticResult.normalizedIdentifier;
+    }
+
+    return { ...staticResult, aiAssisted: false, repositoryUrl };
   }
 
   // Get runtime config for Context7 access

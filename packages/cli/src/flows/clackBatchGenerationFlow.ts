@@ -8,7 +8,7 @@ import {
 import type { GatewayGenerationRequest } from '@legilimens/core';
 import { loadUserConfig, isSetupRequired } from '../config/userConfig.js';
 import { parseBatchInput, type ParsedBatchInput } from '../utils/batchInputParser.js';
-import { classifyBatch, type ClassifiedDependency } from '../utils/dependencyClassifier.js';
+import { classifyBatch } from '../utils/dependencyClassifier.js';
 import { debugLogger } from '../utils/debugLogger.js';
 
 export interface ClackFlowResult {
@@ -37,7 +37,6 @@ export async function runClackBatchGenerationFlow(
   try {
     const userConfig = loadUserConfig();
     const runtimeConfig = getRuntimeConfig();
-    const setupRequired = await isSetupRequired();
 
     // Pre-flight check
     const tavilyPresent = Boolean(process.env.TAVILY_API_KEY || userConfig.apiKeys.tavily);
@@ -132,7 +131,7 @@ export async function runClackBatchGenerationFlow(
         const detection = await detectSourceTypeWithAI(dep.identifier, { enableSelection: false });
         repositoryUrl = detection.repositoryUrl;
         if (detection.normalizedIdentifier) normalizedId = detection.normalizedIdentifier;
-        if (detection.sourceType) sourceType = detection.sourceType;
+        if (detection.sourceType && detection.sourceType !== 'unknown') sourceType = detection.sourceType;
       } catch {
         // Fall back to classifier results if AI detection fails
         debugLogger.log('BatchFlow', `AI detection failed for ${dep.identifier}, using classifier fallback`);
@@ -251,7 +250,7 @@ export async function runNonInteractiveBatch(
         const detection = await detectSourceTypeWithAI(dep.identifier, { enableSelection: false });
         repositoryUrl = detection.repositoryUrl;
         if (detection.normalizedIdentifier) normalizedId = detection.normalizedIdentifier;
-        if (detection.sourceType) sourceType = detection.sourceType;
+        if (detection.sourceType && detection.sourceType !== 'unknown') sourceType = detection.sourceType;
       } catch {
         // Fall back to classifier results
       }
@@ -271,9 +270,14 @@ export async function runNonInteractiveBatch(
       };
 
       try {
-        await generateGatewayDoc(request);
+        const res = await generateGatewayDoc(request);
         const durationMs = Date.now() - itemStart;
-        results.push({ identifier: dep.normalizedIdentifier, success: true, durationMs });
+        results.push({
+          identifier: dep.normalizedIdentifier,
+          success: true,
+          durationMs,
+          artifact: res.artifacts?.[0]
+        });
         console.log(` done (${durationMs}ms)`);
       } catch (error) {
         const durationMs = Date.now() - itemStart;
