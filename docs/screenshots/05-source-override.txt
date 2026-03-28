@@ -1,0 +1,40 @@
+Screenshot:
+│  Generate gateway documentation
+┌  🪄  Reading the minds of repositories
+│
+◇  What do you need documentation on?
+│  react
+│
+◇  Source detected: npm, Type: other
+│
+◇  Source Detection Result ──╮
+│                            │
+│  Identifier: react         │
+│  Dependency type: other    │
+│  Source type: npm          │
+│  Repository: not detected  │
+│                            │
+├────────────────────────────╯
+│
+◇  Proceed with this detected source?
+│  Override with different repository/URL
+│
+◇  Enter correct URL or identifier:
+│  facebook/react
+│
+◇  Re-detected: github, other
+│
+◇  Source Detection Result ────╮
+│                              │
+│  Identifier: facebook/react  │
+│  Dependency type: other      │
+│  Source type: github         │
+│  Repository: not detected    │
+│                              │
+├──────────────────────────────╯
+│
+◆  Proceed with this detected source?
+│  ● Looks correct, proceed
+│  ○ Override with different repository/URL
+│  ○ Cancel
+└

@@ -284,6 +284,97 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       // The orchestrator will attempt Context7/Firecrawl as fallback
     }
 
+    // Source confirmation step — let user verify or override before fetch
+    let sourceConfirmed = false;
+    while (!sourceConfirmed) {
+      const summaryLines = [
+        `Identifier: ${detection.normalizedIdentifier || identifier}`,
+        `Dependency type: ${dependencyType}`,
+        `Source type: ${detection.sourceType}`,
+        repositoryUrl ? `Repository: ${repositoryUrl}` : 'Repository: not detected',
+        detection.aiAssisted ? `Detected via: ${detection.aiToolUsed || 'AI pipeline'}` : '',
+      ].filter(Boolean);
+
+      note(summaryLines.join('\n'), 'Source Detection Result');
+
+      const sourceAction = await select({
+        message: 'Proceed with this detected source?',
+        options: [
+          { value: 'accept', label: 'Looks correct, proceed' },
+          { value: 'override', label: 'Override with different repository/URL' },
+          { value: 'cancel', label: 'Cancel' },
+        ],
+      });
+
+      if (typeof sourceAction === 'symbol' || sourceAction === 'cancel') {
+        cancel('Cancelled');
+        return { success: false, error: 'Operation cancelled by user' };
+      }
+
+      if (sourceAction === 'override') {
+        const overrideInput = await text({
+          message: 'Enter correct URL or identifier:',
+          placeholder: 'e.g., https://github.com/owner/repo or owner/repo',
+          validate: (value) => {
+            if (!value?.trim()) return 'Input cannot be empty';
+          },
+        });
+
+        if (typeof overrideInput === 'symbol') {
+          cancel('Cancelled');
+          return { success: false, error: 'Operation cancelled by user' };
+        }
+
+        // Re-detect with override input
+        const overrideSpinner = spinner();
+        overrideSpinner.start('Re-detecting source');
+        try {
+          detection = await detectSourceTypeWithAI(String(overrideInput), { enableSelection: true });
+          dependencyType = detection.dependencyType || 'other';
+          repositoryUrl = detection.repositoryUrl;
+          sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
+          overrideSpinner.stop(`Re-detected: ${detection.sourceType}, ${dependencyType}${sourceHint}`);
+
+          // Handle Context7 multi-result selection after override
+          if (detection.context7Results && detection.context7Results.length > 1) {
+            const context7Options = detection.context7Results.map((r: { name: string; score: number }) => ({
+              value: r.name,
+              label: `${r.name} (score: ${r.score.toFixed(2)})`,
+            }));
+            context7Options.push({ value: '__none__', label: 'None of these - use original' });
+
+            const context7Choice = await select({
+              message: 'Multiple packages found. Select the correct one:',
+              options: context7Options,
+            });
+
+            if (typeof context7Choice === 'symbol') {
+              // Use whatever we have — loop back to summary
+            } else if (context7Choice !== '__none__') {
+              // Re-detect with selected package
+              const selSpinner = spinner();
+              selSpinner.start('Confirming selection');
+              try {
+                detection = await detectSourceTypeWithAI(String(context7Choice), { enableSelection: false });
+                dependencyType = detection.dependencyType || 'other';
+                repositoryUrl = detection.repositoryUrl;
+                selSpinner.stop(`Confirmed: ${detection.sourceType}, ${dependencyType}`);
+              } catch {
+                selSpinner.stop('Selection failed, using previous detection');
+              }
+            }
+          }
+        } catch (error) {
+          overrideSpinner.stop('Re-detection failed');
+          const msg = error instanceof Error ? error.message : String(error);
+          note(msg, 'Detection Error');
+        }
+        continue; // Loop back to show updated summary
+      }
+
+      sourceConfirmed = true; // accept path
+    }
+
     // Step 3: Minimal mode - skip if already passed via --minimal flag
     let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
     
