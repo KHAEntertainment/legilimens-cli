@@ -233,18 +233,53 @@ export const isAiGenerationEnabled = (config: RuntimeConfig): boolean => {
 
 /**
  * Helper to check if the local LLM is fully configured.
- * Currently only supports DMR mode (modelName + apiEndpoint).
- * Legacy mode (binaryPath + modelPath) is not supported until reintroduced in localLlmRunner.
+ * Supports two modes:
+ * - DMR mode: modelName + apiEndpoint (HTTP API)
+ * - Legacy mode: binaryPath + modelPath (native llama.cpp binary)
  */
 export const isLocalLlmEnabled = (config: RuntimeConfig): boolean => {
   if (!config.localLlm?.enabled) {
     return false;
   }
-  
+
   // DMR mode: modelName + apiEndpoint (required)
-  return Boolean(
+  const dmrMode = Boolean(
     config.localLlm.modelName &&
     config.localLlm.apiEndpoint
+  );
+
+  // Legacy mode: binaryPath + modelPath (native llama.cpp)
+  const legacyMode = Boolean(
+    config.localLlm.binaryPath &&
+    config.localLlm.modelPath
+  );
+
+  return dmrMode || legacyMode;
+};
+
+/**
+ * Helper to check if using DMR mode (HTTP API) vs legacy llama.cpp mode
+ */
+export const isDmrMode = (config: RuntimeConfig): boolean => {
+  if (!isLocalLlmEnabled(config)) {
+    return false;
+  }
+  // DMR mode is active if we have apiEndpoint
+  return Boolean(config.localLlm?.modelName && config.localLlm?.apiEndpoint);
+};
+
+/**
+ * Helper to check if using legacy llama.cpp mode (native binary)
+ */
+export const isLlamaCppMode = (config: RuntimeConfig): boolean => {
+  if (!isLocalLlmEnabled(config)) {
+    return false;
+  }
+  // Legacy mode is active if we have binaryPath + modelPath but no apiEndpoint
+  return Boolean(
+    config.localLlm?.binaryPath &&
+    config.localLlm?.modelPath &&
+    !config.localLlm?.apiEndpoint
   );
 };
 

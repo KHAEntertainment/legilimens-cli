@@ -23,6 +23,8 @@ export {
   getAiCliConfig,
   isAiGenerationEnabled,
   isLocalLlmEnabled,
+  isDmrMode,
+  isLlamaCppMode,
   getPreferredAiTool,
   MINIMUM_NODE_MAJOR
 } from './config/runtimeConfig.js';

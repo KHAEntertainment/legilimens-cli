@@ -274,11 +274,5 @@ export function getDmrPaths(): { binaryPath: string; modelPath: string } {
   };
 }
 
-// Legacy function name for backward compatibility during transition
-export const getLlamaPaths = getDmrPaths;
-
-// Legacy function name for backward compatibility during transition
-export const ensureLlamaCppInstalled = ensureDmrInstalled;
-
-// Export alias for detectExistingDmr
+// Export alias for detectExistingDmr (this one is correct - DMR detection)
 export const detectExistingDmr = detectExistingInstallation;
