@@ -2,6 +2,7 @@
 import { intro, outro, select, cancel, note } from '@clack/prompts';
 import { runClackWizard } from './wizard/clackWizard.js';
 import { runClackGenerationFlow } from './flows/clackGenerationFlow.js';
+import { runClackBatchGenerationFlow, runNonInteractiveBatch } from './flows/clackBatchGenerationFlow.js';
 import { loadUserConfig, isSetupRequired } from './config/userConfig.js';
 import { loadCliEnvironment } from './config/env.js';
 import { loadAsciiBanner, bannerToString } from './assets/asciiBanner.js';
@@ -112,6 +113,25 @@ export async function runClackApp(): Promise<void> {
 
       const config = loadUserConfig();
 
+      // Check for non-interactive batch mode
+      const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
+      if (batchInput) {
+        // Non-interactive batch mode - skip TUI entirely
+        const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
+        const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
+        const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
+        const templatePath = existsSync(defaultTemplate)
+          ? defaultTemplate
+          : existsSync(bundledTemplate)
+          ? bundledTemplate
+          : srcTemplate;
+        const targetDirectory = join(process.cwd(), 'docs');
+        const result = await runNonInteractiveBatch(batchInput, templatePath, targetDirectory);
+        exitCode = result.success ? 0 : 1;
+        shouldContinue = false;
+        continue;
+      }
+
       // Display ASCII banner with colors
       try {
         const bannerPath = join(__dirname, '..', 'assets', 'banner.txt');
@@ -139,6 +159,7 @@ export async function runClackApp(): Promise<void> {
         message: 'What would you like to do?',
         options: [
           { value: 'generate', label: 'Generate gateway documentation' },
+          { value: 'batch-generate', label: 'Generate from batch input' },
           { value: 'setup', label: 'Run setup wizard' },
           { value: 'quit', label: 'Quit' },
         ],
@@ -275,6 +296,71 @@ export async function runClackApp(): Promise<void> {
           }
           
           // Return to menu instead of exiting
+          continue;
+        }
+      }
+
+      if (action === 'batch-generate') {
+        try {
+          // Determine template path
+          const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
+          const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
+          const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
+
+          const templatePath = existsSync(defaultTemplate)
+            ? defaultTemplate
+            : existsSync(bundledTemplate)
+            ? bundledTemplate
+            : srcTemplate;
+
+          if (!existsSync(templatePath)) {
+            console.error('\nError: Template file not found.');
+            exitCode = 1;
+            shouldContinue = false;
+            continue;
+          }
+
+          const targetDirectory = join(process.cwd(), 'docs');
+          const result = await runClackBatchGenerationFlow(templatePath, targetDirectory);
+
+          if (!result.success) {
+            exitCode = 1;
+            if (result.error) {
+              note(`${result.error}`, 'Batch Generation Failed');
+            }
+          }
+
+          // Ask if user wants to continue
+          const continueChoice = await select({
+            message: 'What would you like to do next?',
+            options: [
+              { value: 'menu', label: 'Return to main menu' },
+              { value: 'quit', label: 'Quit' },
+            ],
+          });
+
+          if (typeof continueChoice === 'symbol' || continueChoice === 'quit') {
+            shouldContinue = false;
+          }
+        } catch (error) {
+          console.error('\nError in batch generation flow:');
+          if (error instanceof Error) {
+            console.error(error.message);
+          } else {
+            console.error(String(error));
+          }
+          exitCode = 1;
+
+          if (!disableTuiMode) {
+            console.log('\nPress any key to return to menu...');
+            try {
+              process.stdin.setRawMode(true);
+              await new Promise(resolve => process.stdin.once('data', resolve));
+              process.stdin.setRawMode(false);
+            } catch {
+              await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+          }
           continue;
         }
       }

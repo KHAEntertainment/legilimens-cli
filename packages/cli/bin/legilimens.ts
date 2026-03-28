@@ -46,6 +46,29 @@ if (args.includes('--debug')) {
   process.env.LEGILIMENS_DEBUG = 'true';
 }
 
+// Handle --batch flag (positional argument: file path or inline identifiers)
+const batchIndex = args.indexOf('--batch');
+if (batchIndex !== -1) {
+  const batchInput = args[batchIndex + 1];
+  if (!batchInput || batchInput.startsWith('-')) {
+    console.error('Error: --batch requires an argument (file path or inline identifiers)');
+    console.error('Usage: legilimens --batch @./deps.txt');
+    console.error('       legilimens --batch "react, express, next"');
+    process.exit(1);
+  }
+  process.env.LEGILIMENS_BATCH_INPUT = batchInput;
+  process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
+}
+
+// Handle positional @file argument as batch input (shorthand)
+if (batchIndex === -1) {
+  const firstPositional = args.find(a => !a.startsWith('-'));
+  if (firstPositional?.startsWith('@')) {
+    process.env.LEGILIMENS_BATCH_INPUT = firstPositional;
+    process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
+  }
+}
+
 // Handle --setup flag
 if (args.includes('--setup')) {
   process.env.LEGILIMENS_FORCE_SETUP = 'true';
