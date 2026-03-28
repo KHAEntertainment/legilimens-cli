@@ -1,6 +1,7 @@
 import { intro, outro, text, confirm, select, spinner, note, cancel } from '@clack/prompts';
 import { saveUserConfig, loadUserConfig, type UserConfig } from '../config/userConfig.js';
-import { ensureDmrInstalled, getDmrPaths, detectExistingInstallation } from '../utils/dmrInstaller.js';
+import { ensureDmrInstalled, getDmrPaths } from '../utils/dmrInstaller.js';
+import { detectExistingInstallation, ensureLlamaCppInstalled, getLlamaPaths } from '../utils/llamaInstaller.js';
 import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js';
 import { existsSync } from 'fs';
 import { homedir } from 'os';
@@ -8,6 +9,30 @@ import { homedir } from 'os';
 export interface WizardResult {
   success: boolean;
   error?: string;
+}
+
+/**
+ * Detect which local LLM backend is available
+ */
+async function detectLocalLlmBackend(): Promise<{ type: 'llama.cpp' | 'dmr' | 'both' | 'none'; llamaPath?: string; dmrAvailable?: boolean }> {
+  // Check for llama.cpp first (user preference)
+  const llamaInstall = await detectExistingInstallation();
+
+  // Check for DMR
+  const dmrInstall = await ensureDmrInstalled(() => {});
+
+  const hasLlama = llamaInstall.found && llamaInstall.binaryPath && llamaInstall.binaryPath !== 'docker' && llamaInstall.modelPath;
+  const hasDmr = dmrInstall.success && dmrInstall.binaryPath === 'docker';
+
+  if (hasLlama && hasDmr) {
+    return { type: 'both', llamaPath: llamaInstall.binaryPath };
+  } else if (hasLlama) {
+    return { type: 'llama.cpp', llamaPath: llamaInstall.binaryPath };
+  } else if (hasDmr) {
+    return { type: 'dmr', dmrAvailable: true };
+  }
+
+  return { type: 'none' };
 }
 
 export async function runClackWizard(): Promise<WizardResult> {
@@ -18,14 +43,13 @@ export async function runClackWizard(): Promise<WizardResult> {
 
     // Check existing configuration
     const existingKeys = await getAllApiKeys(['tavily', 'firecrawl', 'context7', 'refTools']);
-    const existingInstallation = await detectExistingInstallation();
-    const paths = getDmrPaths();
-    const dmrInstalled = existingInstallation.found && existingInstallation.binaryPath === 'docker';
+    const backend = await detectLocalLlmBackend();
 
-    // Build configuration status
+    // Build configuration status based on detected backends
     const configStatus = {
-      dmrInstalled: existingInstallation.found && existingInstallation.binaryPath === 'docker',
-      modelInstalled: existingInstallation.found && Boolean(existingInstallation.modelPath),
+      llamaInstalled: backend.type === 'llama.cpp' || backend.type === 'both',
+      dmrInstalled: backend.type === 'dmr' || backend.type === 'both',
+      dmrAvailable: backend.dmrAvailable ?? false,
       tavilyKeyExists: Boolean(existingKeys.tavily || process.env.TAVILY_API_KEY),
       firecrawlKeyExists: Boolean(existingKeys.firecrawl || process.env.FIRECRAWL_API_KEY),
       context7KeyExists: Boolean(existingKeys.context7 || process.env.CONTEXT7_API_KEY),
@@ -34,12 +58,11 @@ export async function runClackWizard(): Promise<WizardResult> {
 
     // Show current configuration status
     const statusLines = [
-      configStatus.dmrInstalled
-        ? '✓ Docker Model Runner: Available (Docker + DMR enabled)'
-        : '✗ Docker Model Runner: Not available (install Docker Desktop)',
-      configStatus.modelInstalled
-        ? `✓ Granite model: ${existingInstallation.modelPath || paths.modelPath} (pulled)`
-        : '✗ Granite model: Not pulled (will download from Docker Hub)',
+      configStatus.llamaInstalled
+        ? `✓ llama.cpp: Available (${backend.llamaPath})`
+        : configStatus.dmrInstalled
+          ? '✓ Docker Model Runner: Available (Docker + DMR enabled)'
+          : '✗ Local LLM: Not available (llama.cpp or DMR)',
       configStatus.tavilyKeyExists
         ? '✓ Tavily API key: Configured'
         : '✗ Tavily API key: Not configured',
@@ -57,7 +80,7 @@ export async function runClackWizard(): Promise<WizardResult> {
     note(statusLines, 'Current Configuration');
 
     // If everything is configured, ask if user wants to update
-    const allConfigured = configStatus.dmrInstalled && configStatus.modelInstalled && configStatus.tavilyKeyExists;
+    const allConfigured = (configStatus.llamaInstalled || configStatus.dmrInstalled) && configStatus.tavilyKeyExists;
     if (allConfigured) {
       const updateSettings = await confirm({
         message: 'Configuration complete. Update settings?',
@@ -75,58 +98,100 @@ export async function runClackWizard(): Promise<WizardResult> {
       }
     }
 
-    note(`Legilimens will automatically pull Granite 4.0 Micro model via Docker Model Runner.\nRequires: Docker Desktop installed and running.\nConfiguration will be saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}.`, 'Welcome');
+    // Determine which backend to use (llama.cpp is preferred)
+    let useLlamaCpp = false;
+    let llamaBinaryPath: string | undefined;
+    let llamaModelPath: string | undefined;
 
-    // Handle DMR installation
-    let dmrRuntime: string | undefined;
-    let modelPath: string | undefined;
-
-    if (existingInstallation.found && existingInstallation.binaryPath === 'docker') {
-      // Use existing installation
-      note('Using existing Docker Model Runner installation', 'Existing Installation Detected');
-      dmrRuntime = existingInstallation.binaryPath;
-      modelPath = existingInstallation.modelPath;
-
-      // If model is missing, pull it
-      if (!modelPath) {
-        const installSpinner = spinner();
-        installSpinner.start('Pulling Granite model from Docker Hub');
-        const installResult = await ensureDmrInstalled((msg) => {
-          installSpinner.message(msg);
-        });
-        installSpinner.stop('Granite model pulled successfully');
-        modelPath = installResult.modelPath;
-      }
-    } else {
-      // No existing DMR installation detected - pull model
-      const installSpinner = spinner();
-      installSpinner.start('Setting up Docker Model Runner and pulling Granite model');
-
-      const installResult = await ensureDmrInstalled((msg) => {
-        installSpinner.message(msg);
+    if (backend.type === 'both') {
+      // Both available - ask user which they prefer
+      const choice = await select({
+        message: 'Which local LLM backend do you prefer?',
+        options: [
+          { label: 'llama.cpp (native binary, recommended)', value: 'llama' },
+          { label: 'Docker Model Runner (via Docker)', value: 'dmr' }
+        ],
+        initialValue: 'llama'
       });
 
-      if (!installResult.success) {
-        installSpinner.stop('DMR setup failed');
-        cancel(`Failed to setup Docker Model Runner: ${installResult.error}`);
-        return { success: false, error: installResult.error };
+      if (typeof choice === 'symbol') {
+        cancel('Setup cancelled');
+        return { success: false };
       }
 
-      installSpinner.stop('Docker Model Runner ready with Granite model');
-      dmrRuntime = installResult.binaryPath;
-      modelPath = installResult.modelPath;
+      useLlamaCpp = choice === 'llama';
+    } else if (backend.type === 'llama.cpp') {
+      // Only llama.cpp available
+      note('llama.cpp detected. Using llama.cpp as local LLM backend.', 'Backend Detected');
+      useLlamaCpp = true;
+    } else if (backend.type === 'dmr') {
+      // Only DMR available
+      note('Docker Model Runner detected. Using DMR as local LLM backend.', 'Backend Detected');
+      useLlamaCpp = false;
+    } else {
+      // Neither available - offer to install llama.cpp (user preference)
+      const installChoice = await select({
+        message: 'No local LLM backend detected. Which would you like to install?',
+        options: [
+          { label: 'llama.cpp (recommended - native binary, no Docker)', value: 'llama' },
+          { label: 'Docker Model Runner (requires Docker Desktop)', value: 'dmr' }
+        ],
+        initialValue: 'llama'
+      });
+
+      if (typeof installChoice === 'symbol') {
+        cancel('Setup cancelled');
+        return { success: false };
+      }
+
+      useLlamaCpp = installChoice === 'llama';
     }
 
-    // Validate that we have valid configuration before continuing
-    if (!dmrRuntime || !modelPath) {
-      cancel('Installation completed but configuration was not set correctly. Please report this issue.');
-      return { success: false, error: 'Invalid installation state: missing DMR runtime or model name' };
-    }
+    // Handle backend installation/setup
+    if (useLlamaCpp) {
+      // Install/setup llama.cpp
+      const llamaSpinner = spinner();
 
-    // Debug logging
-    if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[wizard] Installation validated - runtime: ${dmrRuntime}, model: ${modelPath}`);
-      console.debug(`[wizard] Will save localLlm: ${dmrRuntime && modelPath ? 'YES' : 'NO'}`);
+      if (backend.type === 'llama.cpp' || backend.type === 'both') {
+        llamaSpinner.start('Setting up llama.cpp with Granite model...');
+      } else {
+        llamaSpinner.start('Installing llama.cpp and downloading Granite model (~2.1GB)...');
+      }
+
+      const llamaResult = await ensureLlamaCppInstalled((msg) => {
+        llamaSpinner.message(msg);
+      });
+
+      if (!llamaResult.success) {
+        llamaSpinner.stop('llama.cpp setup failed');
+        cancel(`Failed to setup llama.cpp: ${llamaResult.error}`);
+        return { success: false, error: llamaResult.error };
+      }
+
+      llamaSpinner.stop('llama.cpp ready with Granite model');
+      llamaBinaryPath = llamaResult.binaryPath;
+      llamaModelPath = llamaResult.modelPath;
+    } else {
+      // Install/setup DMR
+      const dmrSpinner = spinner();
+
+      if (backend.type === 'dmr' || backend.type === 'both') {
+        dmrSpinner.start('Setting up Docker Model Runner...');
+      } else {
+        dmrSpinner.start('Setting up Docker Model Runner and pulling Granite model...');
+      }
+
+      const dmrResult = await ensureDmrInstalled((msg) => {
+        dmrSpinner.message(msg);
+      });
+
+      if (!dmrResult.success) {
+        dmrSpinner.stop('DMR setup failed');
+        cancel(`Failed to setup Docker Model Runner: ${dmrResult.error}`);
+        return { success: false, error: dmrResult.error };
+      }
+
+      dmrSpinner.stop('Docker Model Runner ready with Granite model');
     }
 
     // API Key prompts with pre-filled values
@@ -197,21 +262,36 @@ export async function runClackWizard(): Promise<WizardResult> {
       return { success: false };
     }
 
-    // Ask if user wants to customize DMR settings or use defaults
-    let modelName = 'granite-4.0-micro:latest';
-    let apiEndpoint = 'http://localhost:12434';
-    
-    if (dmrRuntime && modelPath) {
+    // Build local LLM config based on chosen backend
+    let localLlmConfig: UserConfig['localLlm'];
+
+    if (useLlamaCpp && llamaBinaryPath && llamaModelPath) {
+      // Configure llama.cpp mode (native binary)
+      localLlmConfig = {
+        enabled: true,
+        binaryPath: llamaBinaryPath,
+        modelPath: llamaModelPath,
+        threads: 8,
+        temp: 0.7,
+        timeoutMs: 60000,
+        resetBetweenTasks: true
+      };
+    } else {
+      // Configure DMR mode (HTTP API)
+      const dmrPaths = getDmrPaths();
+      let modelName = 'granite-4.0-micro:latest';
+      let apiEndpoint = 'http://localhost:12434';
+
       const useDefaults = await confirm({
         message: 'Use default DMR settings (model: granite-4.0-micro:latest, endpoint: http://localhost:12434)?',
         initialValue: true,
       });
 
       if (useDefaults === false) {
-        // Get user custom values with existing config as initial values if available
+        // Get user custom values
         const existingModelName = current.localLlm?.modelName || 'granite-4.0-micro:latest';
         const existingApiEndpoint = current.localLlm?.apiEndpoint || 'http://localhost:12434';
-        
+
         const modelNameInput = await text({
           message: 'Enter DMR model name',
           initialValue: existingModelName,
@@ -223,7 +303,6 @@ export async function runClackWizard(): Promise<WizardResult> {
           return { success: false };
         }
 
-        // Trim and validate model name
         const trimmedModelName = modelNameInput.trim();
         if (!trimmedModelName) {
           cancel('Model name cannot be empty');
@@ -242,36 +321,41 @@ export async function runClackWizard(): Promise<WizardResult> {
           return { success: false };
         }
 
-        // Trim and normalize endpoint
         let trimmedEndpoint = apiEndpointInput.trim();
         if (!trimmedEndpoint) {
           cancel('API endpoint cannot be empty');
           return { success: false };
         }
 
-        // Prepend http:// if no scheme provided
         if (!trimmedEndpoint.includes('://')) {
           trimmedEndpoint = `http://${trimmedEndpoint}`;
         }
 
-        // Validate URL format
         try {
           new URL(trimmedEndpoint);
           apiEndpoint = trimmedEndpoint;
-        } catch (error) {
+        } catch {
           cancel('Invalid API endpoint URL format');
           return { success: false };
         }
       } else if (typeof useDefaults === 'symbol') {
         cancel('Setup cancelled');
         return { success: false };
-      } else {
-        // User chose defaults - use the default values initialized above
-        // (modelName and apiEndpoint are already set to defaults at lines 201-202)
       }
+
+      localLlmConfig = {
+        enabled: true,
+        modelName: modelName,
+        apiEndpoint: apiEndpoint,
+        tokens: 8192,
+        threads: 8,
+        temp: 0.7,
+        timeoutMs: 60000,
+        resetBetweenTasks: true
+      };
     }
 
-    // Only update keys that changed (keep existing if prompt was empty)
+    // Save configuration
     const cfg: UserConfig = {
       ...current,
       apiKeys: {
@@ -281,21 +365,11 @@ export async function runClackWizard(): Promise<WizardResult> {
         context7: context7Key ? String(context7Key) : (existingKeys.context7 || ''),
         refTools: refToolsKey ? String(refToolsKey) : (existingKeys.refTools || '')
       },
-      localLlm: dmrRuntime && modelPath ? {
-        enabled: true,
-        modelName: modelName,
-        apiEndpoint: apiEndpoint,
-        tokens: 8192,  // Granite 4.0 Micro context window
-        threads: 8,      // Reasonable default for most systems
-        temp: 0.7,       // Balance between creativity and consistency
-        timeoutMs: 60000, // 60 seconds for generation tasks
-        resetBetweenTasks: true  // Clean state between generations
-      } : current.localLlm,
+      localLlm: localLlmConfig,
       setupCompleted: true,
       configVersion: current.configVersion || '1.0.0'
     };
 
-    // Debug logging
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug(`[wizard] Saving config with localLlm: ${JSON.stringify(cfg.localLlm, null, 2)}`);
     }
@@ -303,33 +377,45 @@ export async function runClackWizard(): Promise<WizardResult> {
     const saveSpinner = spinner();
     saveSpinner.start('Saving configuration');
     const res = await saveUserConfig(cfg);
-    
+
     if (!res.success) {
       saveSpinner.stop('Configuration save failed');
       note(res.error || 'Unknown error occurred', 'Error Details');
-      
-      // Offer retry option
+
       const retry = await confirm({
         message: 'Retry saving configuration?',
         initialValue: true,
       });
-      
+
       if (retry === true) {
         return runClackWizard();
       }
-      
+
       outro(`Setup failed: ${res.error}`);
       return { success: false, error: res.error };
     }
-    
+
     saveSpinner.stop(`Configuration saved to ~/.legilimens/config.json\nAPI keys stored securely in ${await getStorageMethod()}`);
 
-    // Export relevant env for this session (only if non-empty values were entered)
-    if (dmrRuntime && modelPath) {
+    // Export relevant env for this session
+    if (useLlamaCpp && llamaBinaryPath && llamaModelPath) {
+      // Set env vars for llama.cpp mode
       process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
-      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = modelName;
-      process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = apiEndpoint;
+      process.env.LEGILIMENS_LOCAL_LLM_BIN = llamaBinaryPath;
+      process.env.LEGILIMENS_LOCAL_LLM_MODEL = llamaModelPath;
+      // Clear DMR vars if set
+      delete process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
+      delete process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
+    } else if (cfg.localLlm?.modelName && cfg.localLlm?.apiEndpoint) {
+      // Set env vars for DMR mode
+      process.env.LEGILIMENS_LOCAL_LLM_ENABLED = 'true';
+      process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME = cfg.localLlm.modelName;
+      process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT = cfg.localLlm.apiEndpoint;
+      // Clear llama.cpp vars if set
+      delete process.env.LEGILIMENS_LOCAL_LLM_BIN;
+      delete process.env.LEGILIMENS_LOCAL_LLM_MODEL;
     }
+
     // Tavily is auto-enabled in runtimeConfig when API key exists
     if (tavilyKey && String(tavilyKey).trim()) {
       process.env.TAVILY_API_KEY = String(tavilyKey).trim();
@@ -344,64 +430,15 @@ export async function runClackWizard(): Promise<WizardResult> {
       process.env.REFTOOLS_API_KEY = String(refToolsKey).trim();
     }
 
-    const missingVars: string[] = [];
-    
-    // Check if at least one AI source is configured (Local LLM OR Tavily)
-    const hasLocalLlm = process.env.LEGILIMENS_LOCAL_LLM_ENABLED === 'true' &&
-                        process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME &&
-                        process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
-    
+    // Validate configuration
+    const hasLocalLlm = Boolean(cfg.localLlm?.enabled);
     const hasTavily = Boolean(process.env.TAVILY_API_KEY);
-    
-    if (!hasLocalLlm && !hasTavily) {
-      // Neither is configured - check what's missing
-      if (process.env.LEGILIMENS_LOCAL_LLM_ENABLED !== 'true') {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_ENABLED');
-      }
-      const resolvedModelName = process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
-      if (!resolvedModelName) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL_NAME');
-      }
-      const resolvedEndpoint = process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
-      if (!resolvedEndpoint) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_API_ENDPOINT');
-      }
-      if (!process.env.TAVILY_API_KEY) {
-        missingVars.push('TAVILY_API_KEY');
-      }
-    } else if (hasLocalLlm && !hasTavily) {
-      // Local LLM configured but not Tavily - this is OK, but validate Local LLM
-      const resolvedModelName = process.env.LEGILIMENS_LOCAL_LLM_MODEL_NAME;
-      if (!resolvedModelName) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_MODEL_NAME');
-      }
-      const resolvedEndpoint = process.env.LEGILIMENS_LOCAL_LLM_API_ENDPOINT;
-      if (!resolvedEndpoint) {
-        missingVars.push('LEGILIMENS_LOCAL_LLM_API_ENDPOINT');
-      }
-    }
 
-    if (missingVars.length > 0) {
+    if (!hasLocalLlm && !hasTavily) {
       note(
-        `Docker Model Runner configuration incomplete:\n- ${missingVars.join('\n- ')}\nRun setup again to re-attempt automatic fixes.`,
+        `Configuration incomplete: no local LLM and no Tavily API key configured.`,
         'Configuration Warning'
       );
-      const retry = await confirm({
-        message: 'Retry setup to resolve missing configuration?',
-        initialValue: true,
-      });
-
-      if (retry === true) {
-        return runClackWizard();
-      }
-
-      if (typeof retry === 'symbol') {
-        cancel('Setup cancelled');
-        return { success: false, error: `Missing configuration: ${missingVars.join(', ')}` };
-      }
-
-      outro('Setup incomplete. Docker Model Runner will remain disabled until configuration is corrected.');
-      return { success: false, error: `Missing configuration: ${missingVars.join(', ')}` };
     }
 
     outro('Setup complete. You can now generate gateway docs.');
