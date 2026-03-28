@@ -1,88 +1,100 @@
-# AI Assistant Quick Start
+<!-- OPENSPEC:START -->
+# OpenSpec Instructions
 
-Welcome! This is a lightweight entry point for AI assistants working on the Legilimens CLI project.
+These instructions are for AI assistants working in this project.
 
-## Primary Reference
+Always open `@/openspec/AGENTS.md` when the request:
+- Mentions planning or proposals (words like proposal, spec, change, plan)
+- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
+- Sounds ambiguous and you need the authoritative spec before coding
 
-**👉 Read `AGENTS.md` first** - it's the comprehensive technical handbook covering:
-- Complete stack and workspace layout
-- Common commands and workflows
-- Testing expectations and governance rules
-- Detailed technical notes on all major subsystems
+Use `@/openspec/AGENTS.md` to learn:
+- How to create and apply change proposals
+- Spec format and conventions
+- Project structure and guidelines
 
-## Quick Context
+Keep this managed block so 'openspec update' can refresh the instructions.
 
-**Legilimens** is a CLI tool that generates documentation for dependencies by:
-1. Detecting package repositories (GitHub, NPM, URLs)
-2. Fetching docs via multiple sources (DeepWiki, Context7, Tavily, Firecrawl)
-3. Generating formatted markdown using local LLM or cloud AI
-4. Following strict template and quality standards
+<!-- OPENSPEC:END -->
 
-**Architecture:**
-- `@legilimens/core` - Business logic (gateway, detection, fetchers)
-- `@legilimens/cli` - Interactive Clack/Ink-based UX
-- `@legilimens/harness-service` - Fastify HTTP service for parity testing
-- `packages/hive-docs` - git submodule — wiki-style doc management (standalone repo)
-- `packages/graphrag` - git submodule — GraphRAG with SQLite-vec (standalone repo)
+# Legilimens CLI - Agent Instructions
 
-### Git Submodules
+## Project Overview
 
-`packages/hive-docs` and `packages/graphrag` are git submodules. See **AGENTS.md** for
-full submodule commands. Key points:
+Legilimens is a CLI tool that generates lightweight gateway documentation for external dependencies (frameworks, APIs, libraries, tools) to preserve AI context windows. It detects package repositories, fetches docs via multiple sources (DeepWiki, Context7, Tavily, Firecrawl), and generates formatted markdown using local LLM or cloud AI.
 
-- Edits happen in the standalone repos, not inside `packages/`
-- `git submodule status` to check current pins
-- `git submodule update --remote` to pull latest from upstream
+## Tech Stack
 
-## 📦 Monorepo Structure
+- **Runtime**: Node.js 20 LTS, TypeScript 5.x, ESM modules
+- **UI**: Ink + @clack/prompts (full-screen TUI), chalk, ora, figlet
+- **Core**: @legilimens/core (gateway engine, detection, fetchers, AI pipeline)
+- **Harness**: @legilimens/harness-service (Fastify HTTP for parity testing)
+- **Package Manager**: pnpm workspaces
 
-**IMPORTANT:** This repository contains reference to the GraphRAG system for integration planning.
+## Project Structure
 
-**Reference Directory:** `.resources/`
-- **`.resources/graphrag-system/`** - Symlinked reference to GraphRAG-with-SQLite-Vec repository
-- **Read-only** - For planning and reference purposes only
-- **Do NOT modify** files in `.resources/` or symlinked directories
-- See `.resources/CLAUDE.md` for detailed usage instructions
+```
+packages/
+├─ core/              # Gateway engine, detection, AI pipeline, fetchers
+├─ cli/               # TUI application, wizard, config management
+└─ harness-service/   # Fastify HTTP harness for parity tests
+tests/integration/     # Vitest parity test suite
+docs/                  # Gateway outputs + static-backup/
+openspec/              # Change proposal workflow
+.specify/memory/       # Constitution and templates
+.resources/            # Read-only GraphRAG reference (symlink)
+```
 
-**Phase 3 Integration (Q1 2026):**
-- GraphRAG will be integrated as `@legilimens/graphrag` workspace package
-- See `docs/PHASE-3-GRAPHRAG-INTEGRATION-PLAN.md` for complete roadmap
+## Development Commands
 
-## Common Pitfalls
+```bash
+pnpm install                           # Bootstrap workspace
+pnpm --filter @legilimens/cli start    # Launch interactive CLI
+pnpm --filter @legilimens/harness-service dev  # Run parity harness
+pnpm test:integration                 # Run parity tests
+pnpm typecheck                         # TypeScript check
+pnpm lint                              # ESLint
+```
 
-### Configuration & Setup
-- **Setup Wizard Loop**: If wizard keeps running, check `~/.legilimens/config.json` for `setupCompleted: true` and valid `localLlm` paths
-- **"No AI provider configured"**: Ensure `loadCliEnvironment()` is called before flows run; check API keys in secure storage
-- **Local LLM not found**: Binary lives in nested path `~/.legilimens/bin/build/bin/llama-cli`; recursive search required
-- **Environment Variables**: Don't manually set `TAVILY_API_KEY` etc. - they're loaded from secure storage automatically
+## Current Status
 
-### Code Standards
-- **TypeScript Strict Mode**: All packages use strict type checking with ESM modules
-- **pnpm Workspaces**: Always use `--filter` for package-specific commands
-- **Import Paths**: Use `@legilimens/core` imports, not relative paths across packages
-- **Template Compliance**: Documentation output MUST follow `docs/templates/legilimens-template.md` format
+**Active DMR (Document Model Reference) refactoring** on `dmr-refactor` branch. Key features working:
+- Tavily-first discovery pipeline with Context7 fallback
+- Local LLM support (llama.cpp with phi-4 GGUF)
+- System keychain credential storage
+- Full-screen TUI with alternate screen buffer
 
-### Testing
-- **Parity Tests**: Changes to `@legilimens/core` require green `tests/integration/parity.spec.ts`
-- **Unit Tests**: Prefer `vitest` with `ink-testing-library` for CLI components
-- **No Network in CI**: Harness tests use Fastify inject, not real HTTP
+## Known Issues
 
-## Governance
+- Setup wizard may loop if `~/.legilimens/config.json` missing `setupCompleted: true`
+- Local LLM binary at nested path `~/.legilimens/bin/build/bin/llama-cli`
+- Disable TUI with `LEGILIMENS_DISABLE_TUI=true` for debugging
 
-- **Template Enforcement**: Generated docs must match official template structure
-- **Static Backups**: All generated files need `static-backup/` copies
+## Linear Access (Agent Standard)
 
-## Troubleshooting
+All Linear work goes through **core-memory MCP** via `execute_integration_action`.
 
-If you encounter configuration or setup issues, check:
-1. **`WORKING_CLI_SETUP.md`** - Detailed status snapshot and common fixes
-2. **`AGENTS.md` Technical Notes** - Architecture-specific guidance
-3. **`docs/quickstart.md`** - First-time setup walkthrough
+**Session start pattern:**
+1. `memory_search("legilimens")`
+2. `execute_integration_action(accountId: "0b4764e3-a793-4537-89b7-b26eff7b7675", action: "linear_search_issues", params: {query: "legilimens", first: 20})`
 
-## Ready to Start
+**Available actions:** `linear_search_issues`, `linear_create_issue`, `linear_update_issue`, `linear_create_project`, `linear_list_cycles`
 
-1. Read `AGENTS.md` for comprehensive context
-2. Check `docs/guides/WORKING_CLI_SETUP.md` if debugging CLI issues
-3. Run `pnpm install` and launch with `pnpm --filter @legilimens/cli start`
+**Linear accountId:** `0b4764e3-a793-4537-89b7-b26eff7b7675`
 
-Happy coding! 🚀
+## Landing the Plane (Session Completion)
+
+Work is NOT complete until `git push` succeeds.
+
+1. File issues for remaining work via core-memory
+2. Run quality gates (tests, typecheck)
+3. Update issue status
+4. `git pull --rebase && git push` (MANDATORY)
+5. Verify clean git status
+
+## Quick Links
+
+- Full technical docs: `AGENTS.md`
+- Constitution: `.specify/memory/constitution.md`
+- Quickstart: `docs/quickstart.md`
+- Troubleshooting: `docs/guides/WORKING_CLI_SETUP.md`
