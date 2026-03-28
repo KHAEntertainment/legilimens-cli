@@ -6,6 +6,17 @@ import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js
 import { existsSync } from 'fs';
 import { homedir } from 'os';
 
+/**
+ * Mask an API key for display - shows only first 4 and last 4 characters
+ * Example: "tvly-1234567890abcdef" -> "tvly-****efgh"
+ */
+function maskApiKey(key: string): string {
+  if (key.length <= 12) {
+    return key.slice(0, 2) + '****' + key.slice(-2);
+  }
+  return key.slice(0, 8) + '****' + key.slice(-4);
+}
+
 export interface WizardResult {
   success: boolean;
   error?: string;
@@ -194,15 +205,16 @@ export async function runClackWizard(): Promise<WizardResult> {
       dmrSpinner.stop('Docker Model Runner ready with Granite model');
     }
 
-    // API Key prompts with pre-filled values
+    // API Key prompts with pre-filled values (masked for security)
+    const existingTavily = process.env.TAVILY_API_KEY ?? existingKeys.tavily ?? '';
     const tavilyKey = await text({
-      message: `Tavily API key (for web search)${existingKeys.tavily ? ' [current key will be kept if empty]' : ''}`,
-      initialValue: process.env.TAVILY_API_KEY ?? existingKeys.tavily ?? '',
-      placeholder: 'tvly-...',
+      message: `Tavily API key (for web search)${existingTavily ? ` [current: ${maskApiKey(existingTavily)} - keep empty to reuse]` : ''}`,
+      initialValue: '',  // Don't pre-fill for security - user enters manually
+      placeholder: existingTavily ? '(key configured)' : 'tvly-...',
       validate: (value) => {
         // Allow empty if key already exists
         if (!value || value.trim().length === 0) {
-          if (!existingKeys.tavily && !process.env.TAVILY_API_KEY) {
+          if (!existingTavily) {
             return 'Tavily API key is required for natural language dependency resolution';
           }
         }
@@ -214,6 +226,11 @@ export async function runClackWizard(): Promise<WizardResult> {
       return { success: false };
     }
 
+    // Use new key if provided, otherwise keep existing
+    const finalTavilyKey = tavilyKey && String(tavilyKey).trim() 
+      ? String(tavilyKey) 
+      : existingTavily;
+
     // Ask if user wants to configure optional keys
     const configureOptional = await confirm({
       message: 'Configure optional API keys (Firecrawl, Context7, RefTools)?',
@@ -224,11 +241,16 @@ export async function runClackWizard(): Promise<WizardResult> {
     let context7Key: string | symbol = '';
     let refToolsKey: string | symbol = '';
 
+    // Track existing keys for masking
+    const existingFirecrawl = process.env.FIRECRAWL_API_KEY ?? existingKeys.firecrawl ?? '';
+    const existingContext7 = process.env.CONTEXT7_API_KEY ?? existingKeys.context7 ?? '';
+    const existingRefTools = process.env.REFTOOLS_API_KEY ?? existingKeys.refTools ?? '';
+
     if (configureOptional === true) {
       firecrawlKey = await text({
-        message: `Firecrawl API key (optional, for web documentation)${existingKeys.firecrawl ? ' [current key will be kept if empty]' : ''}`,
-        initialValue: process.env.FIRECRAWL_API_KEY ?? existingKeys.firecrawl ?? '',
-        placeholder: 'fc-...'
+        message: `Firecrawl API key (optional)${existingFirecrawl ? ` [current: ${maskApiKey(existingFirecrawl)}]` : ''}`,
+        initialValue: '',
+        placeholder: existingFirecrawl ? '(key configured)' : 'fc-...'
       });
 
       if (typeof firecrawlKey === 'symbol') {
@@ -237,9 +259,9 @@ export async function runClackWizard(): Promise<WizardResult> {
       }
 
       context7Key = await text({
-        message: `Context7 API key (optional, for NPM docs)${existingKeys.context7 ? ' [current key will be kept if empty]' : ''}`,
-        initialValue: process.env.CONTEXT7_API_KEY ?? existingKeys.context7 ?? '',
-        placeholder: ''
+        message: `Context7 API key (optional)${existingContext7 ? ` [current: ${maskApiKey(existingContext7)}]` : ''}`,
+        initialValue: '',
+        placeholder: existingContext7 ? '(key configured)' : ''
       });
 
       if (typeof context7Key === 'symbol') {
@@ -248,9 +270,9 @@ export async function runClackWizard(): Promise<WizardResult> {
       }
 
       refToolsKey = await text({
-        message: `RefTools API key (optional)${existingKeys.refTools ? ' [current key will be kept if empty]' : ''}`,
-        initialValue: process.env.REFTOOLS_API_KEY ?? existingKeys.refTools ?? '',
-        placeholder: ''
+        message: `RefTools API key (optional)${existingRefTools ? ` [current: ${maskApiKey(existingRefTools)}]` : ''}`,
+        initialValue: '',
+        placeholder: existingRefTools ? '(key configured)' : ''
       });
 
       if (typeof refToolsKey === 'symbol') {
@@ -360,10 +382,10 @@ export async function runClackWizard(): Promise<WizardResult> {
       ...current,
       apiKeys: {
         ...(current.apiKeys ?? {}),
-        tavily: tavilyKey ? String(tavilyKey) : (existingKeys.tavily || ''),
-        firecrawl: firecrawlKey ? String(firecrawlKey) : (existingKeys.firecrawl || ''),
-        context7: context7Key ? String(context7Key) : (existingKeys.context7 || ''),
-        refTools: refToolsKey ? String(refToolsKey) : (existingKeys.refTools || '')
+        tavily: finalTavilyKey,
+        firecrawl: firecrawlKey && String(firecrawlKey).trim() ? String(firecrawlKey) : existingFirecrawl,
+        context7: context7Key && String(context7Key).trim() ? String(context7Key) : existingContext7,
+        refTools: refToolsKey && String(refToolsKey).trim() ? String(refToolsKey) : existingRefTools
       },
       localLlm: localLlmConfig,
       setupCompleted: true,

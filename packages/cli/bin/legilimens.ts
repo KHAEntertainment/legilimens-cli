@@ -46,6 +46,7 @@ if (args.includes('--debug')) {
   process.env.LEGILIMENS_DEBUG = 'true';
 }
 
+<<<<<<< HEAD
 // Handle --batch flag (positional argument: file path or inline identifiers)
 const batchIndex = args.indexOf('--batch');
 if (batchIndex !== -1) {
@@ -70,6 +71,8 @@ if (batchIndex === -1) {
   }
 }
 
+=======
+>>>>>>> c6452af (fix: complete Pre-Phase-4 UX gaps (KHA-125))
 // Handle --setup flag
 if (args.includes('--setup')) {
   process.env.LEGILIMENS_FORCE_SETUP = 'true';
