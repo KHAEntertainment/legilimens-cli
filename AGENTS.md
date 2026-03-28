@@ -110,6 +110,87 @@ pnpm lint                               # ESLint (requires parserOptions.project
 - Parity test (`tests/integration/parity.spec.ts`) must stay green; expands when new scenarios added.
 - CLI components should prefer `ink-testing-library` for future unit tests.
 - Integration harness should use Fastify inject tests (no network binding in CI).
+- **TUI verification** must use `agent-tui` for visual confirmation of interactive flows (see below).
+
+## TUI Testing with agent-tui
+
+`agent-tui` (v1.0.1, installed at `/opt/homebrew/bin/agent-tui`) provides virtual PTY emulation for programmatic TUI testing — like Playwright for terminals. It captures screenshots, injects keyboard/text input, and supports wait conditions.
+
+### When Required
+
+- After modifying `clackWizard.ts`, `clackGenerationFlow.ts`, or `clackApp.ts`
+- After any TUI layout, prompt, or banner changes
+- When validating API key masking, minimal mode, or backend selection UI
+- Regression checks after refactors that touch interactive flows
+
+### Core Workflow
+
+```bash
+# 1. Start daemon (required once per session)
+agent-tui daemon start
+
+# 2. Run Legilimens in a virtual PTY
+agent-tui run -- npx tsx packages/cli/bin/legilimens.ts
+
+# 3. Capture screenshot (text or JSON)
+agent-tui screenshot                # Human-readable text output
+agent-tui screenshot --json         # JSON for assertions
+
+# 4. Interact
+agent-tui type "react"              # Type text
+agent-tui press Enter               # Press keys
+agent-tui press Down Enter          # Navigate menus
+agent-tui wait "Configure"          # Wait for text to appear
+
+# 5. Cleanup
+agent-tui kill                      # Kill the running session
+agent-tui daemon stop               # Stop daemon
+```
+
+### Test Patterns
+
+**Setup wizard verification:**
+```bash
+agent-tui daemon start
+agent-tui run -- npx tsx packages/cli/bin/legilimens.ts --setup
+agent-tui screenshot  # Verify intro banner and status
+agent-tui wait "Local LLM"
+agent-tui screenshot  # Verify backend selection
+agent-tui kill
+agent-tui daemon stop
+```
+
+**Generation flow verification:**
+```bash
+agent-tui daemon start
+agent-tui run -- npx tsx packages/cli/bin/legilimens.ts
+agent-tui wait "What would you like to do?"
+agent-tui press Down Enter  # Select "Generate"
+agent-tui wait "dependency"
+agent-tui type "react"
+agent-tui press Enter
+agent-tui screenshot  # Verify detection step
+agent-tui kill
+agent-tui daemon stop
+```
+
+**JSON output for assertions:**
+```bash
+agent-tui screenshot --json | jq '.screenshot'  # Extract screen text
+```
+
+### Environment Variables
+
+| Variable | Purpose | Default |
+|----------|---------|---------|
+| `AGENT_TUI_SOCKET` | IPC socket path | `~/.agent-tui/daemon.sock` |
+| `AGENT_TUI_LOG` | Log file path | disabled |
+| `AGENT_TUI_DETACH_KEYS` | Detach sequence | `Ctrl-P Ctrl-Q` |
+
+### Reference
+
+- Repository: https://github.com/pproenca/agent-tui
+- Full CLI docs: `docs/cli/agent-tui.md` (in agent-tui repo)
 
 ## Checklists & Automation
 - Implementation plans and research docs live alongside the spec for traceability.
