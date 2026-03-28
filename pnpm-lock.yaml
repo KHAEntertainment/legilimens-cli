@@ -51,12 +51,18 @@ importers:
       '@legilimens/core':
         specifier: workspace:*
         version: link:../core
+      axios:
+        specifier: ^1.6.0
+        version: 1.12.2
       chalk:
         specifier: ^5.3.0
         version: 5.6.2
       commander:
         specifier: ^11.1.0
         version: 11.1.0
+      decompress:
+        specifier: ^4.2.1
+        version: 4.2.1
       figlet:
         specifier: ^1.6.0
         version: 1.9.3

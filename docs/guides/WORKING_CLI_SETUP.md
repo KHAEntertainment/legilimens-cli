@@ -4,7 +4,7 @@
 > It contains machine-specific paths and outdated status. For current setup instructions,
 > see the main `README.md`. This file is retained for reference only.
 
-## Current Status (at time of writing: commit `99932db`)
+## Current Status (snapshot at time of writing)
 
 The Legilimens CLI foundation was confirmed functional at this snapshot.
 
@@ -41,8 +41,8 @@ The Legilimens CLI foundation was confirmed functional at this snapshot.
   "apiKeysStoredInKeychain": false,
   "localLlm": {
     "enabled": true,
-    "binaryPath": "/Users/bbrenner/.legilimens/bin/build/bin/llama-cli",
-    "modelPath": "/Users/bbrenner/.legilimens/models/phi-4-q4.gguf"
+    "binaryPath": "<USER_HOME>/.legilimens/bin/build/bin/llama-cli",
+    "modelPath": "<USER_HOME>/.legilimens/models/phi-4-q4.gguf"
   },
   "_warning": "API keys are stored securely in system keychain or encrypted file. Do not commit this file to version control."
 }
@@ -66,8 +66,8 @@ export LEGILIMENS_FETCH_RETRIES=3         # 3 retries
 ```
 
 ### Local LLM Installation
-- ✅ **Binary**: `/Users/bbrenner/.legilimens/bin/build/bin/llama-cli` (8.4MB, executable)
-- ✅ **Model**: `/Users/bbrenner/.legilimens/models/phi-4-q4.gguf` (8.4GB, complete)
+- ✅ **Binary**: `<USER_HOME>/.legilimens/bin/build/bin/llama-cli` (8.4MB, executable)
+- ✅ **Model**: `<USER_HOME>/.legilimens/models/phi-4-q4.gguf` (8.4GB, complete)
 - ✅ **Detection**: Recursive search finds installation correctly
 
 ## 🚀 CLI Flow Status
@@ -128,8 +128,8 @@ LEGILIMENS_LOCAL_LLM_ENABLED: undefined
 # After loadCliEnvironment()  
 TAVILY_API_KEY: SET ✅
 LEGILIMENS_LOCAL_LLM_ENABLED: true ✅
-LEGILIMENS_LOCAL_LLM_BIN: /Users/bbrenner/.legilimens/bin/build/bin/llama-cli ✅
-LEGILIMENS_LOCAL_LLM_MODEL: /Users/bbrenner/.legilimens/models/phi-4-q4.gguf ✅
+LEGILIMENS_LOCAL_LLM_BIN: <USER_HOME>/.legilimens/bin/build/bin/llama-cli ✅
+LEGILIMENS_LOCAL_LLM_MODEL: <USER_HOME>/.legilimens/models/phi-4-q4.gguf ✅
 ```
 
 ## 🔄 Next Steps for UX Flow

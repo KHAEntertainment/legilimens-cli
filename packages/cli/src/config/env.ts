@@ -122,6 +122,8 @@ export const loadCliEnvironment = async (
   // can check a single env var regardless of how the user opted in.
   if (mode === 'minimal') {
     env.LEGILIMENS_MINIMAL_MODE = 'true';
+  } else {
+    env.LEGILIMENS_MINIMAL_MODE = 'false';
   }
 
   return {

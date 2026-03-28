@@ -17,6 +17,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export async function runClackApp(): Promise<void> {
+  // Exit code tracking
+  let exitCode = 0;
+
   // Enable color support for Clack prompts
   // Force colors in TTY environments (unless NO_COLOR is set)
   if (!process.env.NO_COLOR) {
@@ -25,7 +28,7 @@ export async function runClackApp(): Promise<void> {
     // This is necessary because TTY detection can fail in some contexts
     chalk.level = 3;
   }
-  
+
   // Load CLI environment (populates env vars from saved config)
   await loadCliEnvironment();
   
@@ -46,7 +49,26 @@ export async function runClackApp(): Promise<void> {
   // Check if running in a TTY environment
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
   const isNonInteractive = process.env.LEGILIMENS_NON_INTERACTIVE === 'true';
-  
+
+  // Short-circuit for non-interactive batch mode - skip all TUI setup
+  if (isNonInteractive) {
+    const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
+    if (batchInput) {
+      const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
+      const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
+      const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
+      const templatePath = existsSync(defaultTemplate)
+        ? defaultTemplate
+        : existsSync(bundledTemplate)
+        ? bundledTemplate
+        : srcTemplate;
+      const targetDirectory = join(process.cwd(), 'docs');
+      const result = await runNonInteractiveBatch(batchInput, templatePath, targetDirectory);
+      exitCode = result.success ? 0 : 1;
+      return;
+    }
+  }
+
   if (!isTTY && !isNonInteractive) {
     console.error('Error: Legilimens requires an interactive terminal (TTY).');
     console.error('This usually happens when:');
@@ -68,8 +90,6 @@ export async function runClackApp(): Promise<void> {
     clearOnStart: !disableTuiMode,   // Clear screen on start
     enableMouse: false               // Mouse not needed for Clack prompts
   });
-
-  let exitCode = 0;
 
   try {
     // Enter full-screen TUI mode (clears screen, preserves history)
@@ -112,25 +132,6 @@ export async function runClackApp(): Promise<void> {
       }
 
       const config = loadUserConfig();
-
-      // Check for non-interactive batch mode
-      const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
-      if (batchInput) {
-        // Non-interactive batch mode - skip TUI entirely
-        const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
-        const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
-        const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
-        const templatePath = existsSync(defaultTemplate)
-          ? defaultTemplate
-          : existsSync(bundledTemplate)
-          ? bundledTemplate
-          : srcTemplate;
-        const targetDirectory = join(process.cwd(), 'docs');
-        const result = await runNonInteractiveBatch(batchInput, templatePath, targetDirectory);
-        exitCode = result.success ? 0 : 1;
-        shouldContinue = false;
-        continue;
-      }
 
       // Display ASCII banner with colors
       try {

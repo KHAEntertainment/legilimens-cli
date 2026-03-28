@@ -57,7 +57,7 @@ Let's plan an overview option before retrieval begins in case we need to correct
 | **Phi-4** | ~6-8GB | Unknown | 16K | Maximum quality |
 
 ### Debug Issues
-1) The handoff of the tasks from the local LLM to installed CLI utilities like Claude-Code, Gemini CLI or Codex never seem to work. We need to re-evaluate how this handoff is happening and verify that the system is using valid non-interactive commands to control these utilities. Here are all the PROPER commands and arguments for Codex, Gemini and Claude-Code (The Gemini Commands should piggyback over to Qwen as well, just change the command from gemini to qwen) '/Users/bbrenner/Documents/Scripting Projects/doc-gateway-cli/docs/templates/## CLI Utility Headless - Non-Interactive.md' 
+1) The handoff of the tasks from the local LLM to installed CLI utilities like Claude-Code, Gemini CLI or Codex never seem to work. We need to re-evaluate how this handoff is happening and verify that the system is using valid non-interactive commands to control these utilities. Here are all the PROPER commands and arguments for Codex, Gemini and Claude-Code (The Gemini Commands should piggyback over to Qwen as well, just change the command from gemini to qwen) - see [CLI Utility Headless - Non-Interactive.md](./## CLI Utility Headless - Non-Interactive.md) 
 
 
 ## Future Proofing & QOL Improvements
@@ -101,7 +101,6 @@ Actual Repo: https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-ver
   - Vector Embeddings - https://huggingface.co/SciPhi/Triplex
   - Specialized Retrieval (optional) - 
   - MCP Attendant - Granite-4 Micro (same as legilimens)
-
 
 
 

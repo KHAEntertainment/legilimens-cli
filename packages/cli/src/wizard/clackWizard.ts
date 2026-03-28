@@ -23,17 +23,17 @@ export interface WizardResult {
 }
 
 /**
- * Detect which local LLM backend is available
+ * Detect which local LLM backend is available (read-only probe)
  */
 async function detectLocalLlmBackend(): Promise<{ type: 'llama.cpp' | 'dmr' | 'both' | 'none'; llamaPath?: string; dmrAvailable?: boolean }> {
   // Check for llama.cpp first (user preference)
   const llamaInstall = await detectExistingInstallation();
 
-  // Check for DMR
-  const dmrInstall = await ensureDmrInstalled(() => {});
+  // Check for DMR (read-only probe, don't install)
+  const dmrPaths = await getDmrPaths();
+  const hasDmr = dmrPaths.binaryPath === 'docker' && dmrPaths.modelPath;
 
   const hasLlama = llamaInstall.found && llamaInstall.binaryPath && llamaInstall.binaryPath !== 'docker' && llamaInstall.modelPath;
-  const hasDmr = dmrInstall.success && dmrInstall.binaryPath === 'docker';
 
   if (hasLlama && hasDmr) {
     return { type: 'both', llamaPath: llamaInstall.binaryPath };

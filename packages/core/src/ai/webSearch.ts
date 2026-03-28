@@ -126,7 +126,13 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
     }
   };
 
-  const sortedItems = items.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
+  // Filter to authoritative sources first (github/official)
+  const authoritativeCandidates = items.filter(i => i.sourceHint === 'github' || i.sourceHint === 'official');
+
+  // If we have authoritative sources, sort and return those
+  // Otherwise, fall back to all candidates
+  const candidates = authoritativeCandidates.length > 0 ? authoritativeCandidates : items;
+  const sortedItems = candidates.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
 
   // Log ranking and sorting decisions
   if (process.env.LEGILIMENS_DEBUG) {
