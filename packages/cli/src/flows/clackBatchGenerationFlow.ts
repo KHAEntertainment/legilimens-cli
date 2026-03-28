@@ -110,19 +110,8 @@ export async function runClackBatchGenerationFlow(
       return { success: false, error: 'Operation cancelled by user' };
     }
 
-    // Minimal mode
-    let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
-    if (!minimalMode) {
-      const response = await confirm({
-        message: 'Enable minimal mode (low-contrast, ANSI-free)?',
-        initialValue: false,
-      });
-      if (typeof response === 'symbol') {
-        cancel('Cancelled');
-        return { success: false, error: 'Operation cancelled by user' };
-      }
-      minimalMode = Boolean(response);
-    }
+    // Minimal mode — resolved from flag / env / config at startup
+    const minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
 
     // Process each dependency
     const results: BatchItemResult[] = [];
