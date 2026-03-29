@@ -1,6 +1,6 @@
 import { intro, outro, text, confirm, select, spinner, note, cancel } from '@clack/prompts';
 import { saveUserConfig, loadUserConfig, type UserConfig } from '../config/userConfig.js';
-import { ensureDmrInstalled, getDmrPaths } from '../utils/dmrInstaller.js';
+import { ensureDmrInstalled, getDmrPaths, detectExistingInstallation as detectDmrInstallation } from '../utils/dmrInstaller.js';
 import { detectExistingInstallation, ensureLlamaCppInstalled, getLlamaPaths } from '../utils/llamaInstaller.js';
 import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js';
 import { existsSync } from 'fs';
@@ -29,11 +29,11 @@ async function detectLocalLlmBackend(): Promise<{ type: 'llama.cpp' | 'dmr' | 'b
   // Check for llama.cpp first (user preference)
   const llamaInstall = await detectExistingInstallation();
 
-  // Check for DMR
-  const dmrInstall = await ensureDmrInstalled(() => {});
+  // Check for DMR (detection only, no model pull)
+  const dmrInstall = await detectDmrInstallation();
 
   const hasLlama = llamaInstall.found && llamaInstall.binaryPath && llamaInstall.binaryPath !== 'docker' && llamaInstall.modelPath;
-  const hasDmr = dmrInstall.success && dmrInstall.binaryPath === 'docker';
+  const hasDmr = dmrInstall.found && dmrInstall.binaryPath === 'docker';
 
   if (hasLlama && hasDmr) {
     return { type: 'both', llamaPath: llamaInstall.binaryPath };
