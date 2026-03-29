@@ -50,7 +50,7 @@ export async function runClackApp(): Promise<void> {
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
   const isNonInteractive = process.env.LEGILIMENS_NON_INTERACTIVE === 'true';
 
-  // Short-circuit for non-interactive batch mode - skip all TUI setup
+  // Short-circuit for non-interactive mode - skip all TUI/setup paths
   if (isNonInteractive) {
     const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
     if (batchInput) {
@@ -67,6 +67,11 @@ export async function runClackApp(): Promise<void> {
       exitCode = result.success ? 0 : 1;
       return;
     }
+
+    // No interactive fallback in non-interactive mode
+    console.error('Error: LEGILIMENS_NON_INTERACTIVE=true requires LEGILIMENS_BATCH_INPUT.');
+    exitCode = 1;
+    return;
   }
 
   if (!isTTY && !isNonInteractive) {
@@ -108,7 +113,7 @@ export async function runClackApp(): Promise<void> {
       // Check if setup is needed (async)
       const setupRequired = await isSetupRequired();
 
-      if (setupRequired || process.env.LEGILIMENS_FORCE_SETUP === 'true') {
+      if (!isNonInteractive && (setupRequired || process.env.LEGILIMENS_FORCE_SETUP === 'true')) {
         // Show why setup is needed
         if (setupRequired) {
           const config = loadUserConfig();
@@ -130,8 +135,6 @@ export async function runClackApp(): Promise<void> {
           continue;
         }
       }
-
-      const config = loadUserConfig();
 
       // Display ASCII banner with colors
       try {
