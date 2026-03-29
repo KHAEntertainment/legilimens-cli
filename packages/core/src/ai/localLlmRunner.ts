@@ -182,23 +182,23 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
     const duration = Date.now() - start;
 
     if (error instanceof Error) {
-      // Timeout error
-      if (error.message.includes('ETIMEDOUT') || error.message.includes('ENOENT')) {
-        return {
-          success: false,
-          raw: '',
-          error: `llama.cpp execution timed out after ${duration}ms`,
-          attempts: 1,
-          durationMs: duration
-        };
-      }
-
       // Binary not found
       if (error.message.includes('ENOENT')) {
         return {
           success: false,
           raw: '',
           error: `llama.cpp binary not found at ${binaryPath}. Run setup wizard to configure.`,
+          attempts: 1,
+          durationMs: duration
+        };
+      }
+
+      // Timeout error
+      if (error.message.includes('ETIMEDOUT')) {
+        return {
+          success: false,
+          raw: '',
+          error: `llama.cpp execution timed out after ${duration}ms`,
           attempts: 1,
           durationMs: duration
         };
