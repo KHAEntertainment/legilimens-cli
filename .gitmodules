@@ -1,0 +1,6 @@
+[submodule "packages/hive-docs"]
+	path = packages/hive-docs
+	url = https://github.com/KHAEntertainment/hive-docs.git
+[submodule "packages/graphrag"]
+	path = packages/graphrag
+	url = https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk.git

@@ -1,22 +1,3 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
-
-These instructions are for AI assistants working in this project.
-
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
-
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
-
 # Legilimens Agent Handbook
 
 Central reference for any AI agent working on the Legilimens CLI workspace.
@@ -36,16 +17,30 @@ Central reference for any AI agent working on the Legilimens CLI workspace.
 packages/
 ├─ core/              # Shared gateway engine + parity helpers
 ├─ cli/               # Ink-powered UX wrapper (bin/legilimens)
-└─ harness-service/   # Fastify parity harness (HTTP)
+├─ harness-service/   # Fastify parity harness (HTTP)
+├─ hive-docs/         # git submodule — wiki-style doc management (standalone repo)
+├─ graphrag/          # git submodule — GraphRAG with SQLite-vec (standalone repo)
 tests/integration/    # Cross-surface parity suite
 docs/                 # Constitution, SDP, template assets
-specs/001-docs-sdp-md # Active Speckit artefacts (spec/plan/tasks)
 .resources/           # Monorepo references (symlinked, read-only)
-├─ README.md          # Usage guide for reference directory
-├─ CLAUDE.md          # Claude Code instructions for .resources/
-├─ AGENTS.md          # AI agent instructions for .resources/
-└─ graphrag-system/   # Symlink to graphrag-with-sqlite_vec (read-only reference)
 ```
+
+## Git Submodules
+
+`packages/hive-docs` and `packages/graphrag` are git submodules pointing to their
+own remote repos. Each continues independent development in its original location.
+
+| Action | Command |
+|--------|---------|
+| Check submodule status | `git submodule status` |
+| Update to latest main | `git submodule update --remote packages/<name>` |
+| Update all submodules | `git submodule update --remote` |
+| Initialize after fresh clone | `git submodule update --init --recursive` |
+| Freeze a submodule | Don't run `update --remote` — stays pinned at current commit |
+| Commit submodule pin | After updating: `git add packages/<name> && git commit` |
+
+**Important**: Edits to submodule code should happen in the original standalone repos,
+not inside `packages/`. The submodule is a read reference for integration work.
 
 ## 📦 Monorepo Structure - IMPORTANT
 
@@ -106,7 +101,6 @@ pnpm lint                               # ESLint (requires parserOptions.project
 ```
 
 ## Governance & Non-Negotiables
-- Constitution lives at `.specify/memory/constitution.md`; DeepWiki doctrine and template rules are mandatory.
 - Gateway docs must use `docs/templates/legilimens-template.md` and write to `docs/{type}/` with matching `static-backup/`.
 - CLI & harness share the same core logic; feature work must flow through `@legilimens/core`.
 - Performance guardrails: typical run ≤10s, absolute max 60s, with visible progress feedback; instrumentation lives in `packages/core/src/telemetry/performance.ts` and recommends minimal mode when runs stretch.
@@ -118,8 +112,6 @@ pnpm lint                               # ESLint (requires parserOptions.project
 - Integration harness should use Fastify inject tests (no network binding in CI).
 
 ## Checklists & Automation
-- Spec quality checklist at `specs/001-docs-sdp-md/checklists/requirements.md`.
-- Tasks tracked in `specs/001-docs-sdp-md/tasks.md`; mark `[X]` as work completes.
 - Implementation plans and research docs live alongside the spec for traceability.
 
 ## Technical Notes

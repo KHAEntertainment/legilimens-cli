@@ -1,22 +1,3 @@
-<!-- OPENSPEC:START -->
-# OpenSpec Instructions
-
-These instructions are for AI assistants working in this project.
-
-Always open `@/openspec/AGENTS.md` when the request:
-- Mentions planning or proposals (words like proposal, spec, change, plan)
-- Introduces new capabilities, breaking changes, architecture shifts, or big performance/security work
-- Sounds ambiguous and you need the authoritative spec before coding
-
-Use `@/openspec/AGENTS.md` to learn:
-- How to create and apply change proposals
-- Spec format and conventions
-- Project structure and guidelines
-
-Keep this managed block so 'openspec update' can refresh the instructions.
-
-<!-- OPENSPEC:END -->
-
 # AI Assistant Quick Start
 
 Welcome! This is a lightweight entry point for AI assistants working on the Legilimens CLI project.
@@ -41,6 +22,17 @@ Welcome! This is a lightweight entry point for AI assistants working on the Legi
 - `@legilimens/core` - Business logic (gateway, detection, fetchers)
 - `@legilimens/cli` - Interactive Clack/Ink-based UX
 - `@legilimens/harness-service` - Fastify HTTP service for parity testing
+- `packages/hive-docs` - git submodule — wiki-style doc management (standalone repo)
+- `packages/graphrag` - git submodule — GraphRAG with SQLite-vec (standalone repo)
+
+### Git Submodules
+
+`packages/hive-docs` and `packages/graphrag` are git submodules. See **AGENTS.md** for
+full submodule commands. Key points:
+
+- Edits happen in the standalone repos, not inside `packages/`
+- `git submodule status` to check current pins
+- `git submodule update --remote` to pull latest from upstream
 
 ## 📦 Monorepo Structure
 
@@ -77,10 +69,6 @@ Welcome! This is a lightweight entry point for AI assistants working on the Legi
 
 ## Governance
 
-The project follows strict governance rules from `.specify/memory/constitution.md`:
-
-- **DeepWiki Doctrine**: All documentation must follow DeepWiki format and quality standards
-- **Performance Guardrails**: Typical runs ≤10s, absolute max 60s with progress indicators
 - **Template Enforcement**: Generated docs must match official template structure
 - **Static Backups**: All generated files need `static-backup/` copies
 
@@ -91,21 +79,10 @@ If you encounter configuration or setup issues, check:
 2. **`AGENTS.md` Technical Notes** - Architecture-specific guidance
 3. **`docs/quickstart.md`** - First-time setup walkthrough
 
-## When to Use OpenSpec
-
-Create a proposal via `@/openspec/AGENTS.md` when work involves:
-- Breaking changes or new major features
-- Architecture shifts or performance overhauls
-- Anything requiring cross-package coordination
-- Security or governance-impacting changes
-
-For standard feature work within existing architecture, proceed directly but keep AGENTS.md context loaded.
-
 ## Ready to Start
 
 1. Read `AGENTS.md` for comprehensive context
-2. Check `WORKING_CLI_SETUP.md` if debugging CLI issues
-3. Review constitution at `.specify/memory/constitution.md` for quality standards
-4. Run `pnpm install` and launch with `pnpm --filter @legilimens/cli start`
+2. Check `docs/guides/WORKING_CLI_SETUP.md` if debugging CLI issues
+3. Run `pnpm install` and launch with `pnpm --filter @legilimens/cli start`
 
 Happy coding! 🚀

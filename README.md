@@ -40,6 +40,7 @@ See [WORKING_CLI_SETUP.md](WORKING_CLI_SETUP.md) for detailed configuration and 
 For a complete walkthrough, see [docs/quickstart.md](docs/quickstart.md).
 
 ```bash
+git submodule update --init --recursive
 pnpm install
 pnpm --filter @legilimens/cli start         # Interactive Clack-based CLI
 pnpm --filter @legilimens/harness-service dev  # HTTP harness for parity checks
@@ -258,4 +259,3 @@ Contributions are welcome. Please see the [Maintenance Guide](docs/MAINTENANCE.m
 ## Reference Docs
 - `docs/sdp.md` – Product narrative, technical stack, and governance context.
 - `AGENTS.md` – Operational handbook for agents collaborating on Legilimens.
-
