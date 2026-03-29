@@ -311,7 +311,7 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
     try {
       const response = await axios.get(GRANITE_MODEL_URL, {
         responseType: 'stream',
-        onDownloadProgress: (progressEvent) => {
+        onDownloadProgress: (progressEvent: { loaded: number; total?: number }) => {
           const total = progressEvent.total ?? 0;
           const current = progressEvent.loaded;
           const pct = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -445,9 +445,9 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
   if (!existsSync(modelPath)) {
     onProgress?.('Downloading Granite GGUF model (~2.1GB, this may take a while)...');
     try {
-      const response = await axios.get(GRANITE_MODEL_URL, { 
+      const response = await axios.get(GRANITE_MODEL_URL, {
         responseType: 'stream',
-        onDownloadProgress: (progressEvent) => {
+        onDownloadProgress: (progressEvent: { loaded: number; total?: number }) => {
           const total = progressEvent.total ?? 0;
           const current = progressEvent.loaded;
           const pct = total > 0 ? Math.round((current / total) * 100) : 0;
