@@ -6,7 +6,7 @@ import {
   detectSourceTypeWithAI,
 } from '@legilimens/core';
 import type { GatewayGenerationRequest } from '@legilimens/core';
-import { loadUserConfig, isSetupRequired } from '../config/userConfig.js';
+import { loadUserConfig } from '../config/userConfig.js';
 import { parseBatchInput, type ParsedBatchInput } from '../utils/batchInputParser.js';
 import { classifyBatch } from '../utils/dependencyClassifier.js';
 import { debugLogger } from '../utils/debugLogger.js';
@@ -218,7 +218,6 @@ export async function runNonInteractiveBatch(
 ): Promise<ClackFlowResult> {
   try {
     await loadUserConfig();
-    const runtimeConfig = getRuntimeConfig();
 
     // Parse
     const parsed = await parseBatchInput(batchInput);
