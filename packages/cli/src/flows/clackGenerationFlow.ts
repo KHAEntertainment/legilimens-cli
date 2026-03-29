@@ -247,7 +247,7 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
           const trimmed = value.trim();
           const isUrl = trimmed.includes('://');
           const isGithubUrl = trimmed.includes('github.com/');
-          const isOwnerRepo = /^[^\/\s]+\/[^\/\s]+$/.test(trimmed);
+          const isOwnerRepo = /^[^/\s]+\/[^/\s]+$/.test(trimmed);
 
           if (!isUrl && !isGithubUrl && !isOwnerRepo) {
             return 'Please provide a valid URL (https://...), GitHub URL containing github.com/, or owner/repo identifier';

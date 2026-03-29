@@ -113,7 +113,7 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
       });
 
       // Handle process exit
-      child.on('close', (code) => {
+      child.on('close', () => {
         clearTimeout(timer);
         if (!killed) {
           resolve((stdout + stderr).trim());
@@ -182,8 +182,8 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
     const duration = Date.now() - start;
 
     if (error instanceof Error) {
-      // Binary not found
-      if (error.message.includes('ENOENT')) {
+      // Timeout error
+      if (error.message.includes('ETIMEDOUT')) {
         return {
           success: false,
           raw: '',

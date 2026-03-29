@@ -39,13 +39,13 @@ Let's plan an overview option before retrieval begins in case we need to correct
 
 ### Core Changes:
 
-1) We need to be able to unisntall the chosen LLM via the CLI. 
-2) We need a dashboard/status panel on the main TUI welcome screen,  under the Ascii art, with things like DMR Status, Local Model Status, Tavily, Firecrawl, Ref and Context7 status, etc. If anything is missing a reminder for the user to go into setup to complete it. If everythign is detected, a status message saying "all dependencies detected: ready to generate documents" or something like that. 
+1) We need to be able to uninstall the chosen LLM via the CLI.
+2) We need a dashboard/status panel on the main TUI welcome screen,  under the Ascii art, with things like DMR Status, Local Model Status, Tavily, Firecrawl, Ref and Context7 status, etc. If anything is missing a reminder for the user to go into setup to complete it. If everything is detected, a status message saying "all dependencies detected: ready to generate documents" or something like that.
 3) We already put up some guardrails to prevent duplicate installs, so let's just review those and make sure they are working as expected.
-4) We are going to offer a choice of LLM's to choose from, with simple descriptions for each one. 
+4) We are going to offer a choice of LLMs to choose from, with simple descriptions for each one.
 - IBM Granite 4 Micro - Current Default. Compact Install Size, 131k Context Window, Great Reasoning and Tool Use Abilities. | https://huggingface.co/ibm-granite/granite-4.0-micro
 - Phi-4 - The original default. Larger Install Size, Possible Better Reasoning and Tool Use Abilities but Small Context Window. | https://huggingface.co/QuantFactory/phi-4-GGUF
-- Qwen 2.5 1b - Most Compact Install Size. Recomended for older hardware or space concious installs. Good reasoning and tool use abilities. | https://huggingface.co/Qwen/Qwen2.5-1B-Instruct
+- Qwen 2.5 1.5B - Most Compact Install Size. Recommended for older hardware or space-conscious installs. Good reasoning and tool use abilities. | https://huggingface.co/Qwen/Qwen2.5-1B-Instruct
 4) Consider adding Docker Model Runner as an alternative way to run models locally instead of llama.cpp. Many users already have docker desktop installed and ready so this could be a convenient alternative. Details in 'docs/templates/DMR.md'
 
 ## 📊 Comparison Chart
@@ -101,6 +101,5 @@ Actual Repo: https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-ver
   - Vector Embeddings - https://huggingface.co/SciPhi/Triplex
   - Specialized Retrieval (optional) - 
   - MCP Attendant - Granite-4 Micro (same as legilimens)
-
 
 
