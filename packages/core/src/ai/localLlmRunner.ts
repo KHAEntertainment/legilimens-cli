@@ -113,7 +113,7 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
       });
 
       // Handle process exit
-      child.on('close', (code) => {
+      child.on('close', () => {
         clearTimeout(timer);
         if (!killed) {
           resolve((stdout + stderr).trim());
