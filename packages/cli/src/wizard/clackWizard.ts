@@ -1,10 +1,8 @@
 import { intro, outro, text, confirm, select, spinner, note, cancel } from '@clack/prompts';
 import { saveUserConfig, loadUserConfig, type UserConfig } from '../config/userConfig.js';
 import { ensureDmrInstalled, getDmrPaths } from '../utils/dmrInstaller.js';
-import { detectExistingInstallation, ensureLlamaCppInstalled, getLlamaPaths } from '../utils/llamaInstaller.js';
-import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js';
-import { existsSync } from 'fs';
-import { homedir } from 'os';
+import { detectExistingInstallation, ensureLlamaCppInstalled } from '../utils/llamaInstaller.js';
+import { getAllApiKeys, getStorageMethod } from '../config/secrets.js';
 
 /**
  * Mask an API key for display - shows only first 4 and last 4 characters
@@ -30,7 +28,7 @@ async function detectLocalLlmBackend(): Promise<{ type: 'llama.cpp' | 'dmr' | 'b
   const llamaInstall = await detectExistingInstallation();
 
   // Check for DMR (read-only probe, don't install)
-  const dmrPaths = await getDmrPaths();
+  const dmrPaths = getDmrPaths();
   const hasDmr = dmrPaths.binaryPath === 'docker' && dmrPaths.modelPath;
 
   const hasLlama = llamaInstall.found && llamaInstall.binaryPath && llamaInstall.binaryPath !== 'docker' && llamaInstall.modelPath;
@@ -300,7 +298,6 @@ export async function runClackWizard(): Promise<WizardResult> {
       };
     } else {
       // Configure DMR mode (HTTP API)
-      const dmrPaths = getDmrPaths();
       let modelName = 'granite-4.0-micro:latest';
       let apiEndpoint = 'http://localhost:12434';
 
