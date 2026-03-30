@@ -17,9 +17,6 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 export async function runClackApp(): Promise<void> {
-  // Exit code tracking
-  let exitCode = 0;
-
   // Enable color support for Clack prompts
   // Force colors in TTY environments (unless NO_COLOR is set)
   if (!process.env.NO_COLOR) {
@@ -28,7 +25,7 @@ export async function runClackApp(): Promise<void> {
     // This is necessary because TTY detection can fail in some contexts
     chalk.level = 3;
   }
-
+  
   // Load CLI environment (populates env vars from saved config)
   await loadCliEnvironment();
   
@@ -49,31 +46,7 @@ export async function runClackApp(): Promise<void> {
   // Check if running in a TTY environment
   const isTTY = process.stdin.isTTY && process.stdout.isTTY;
   const isNonInteractive = process.env.LEGILIMENS_NON_INTERACTIVE === 'true';
-
-  // Short-circuit for non-interactive mode - skip all TUI/setup paths
-  if (isNonInteractive) {
-    const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
-    if (batchInput) {
-      const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
-      const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
-      const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
-      const templatePath = existsSync(defaultTemplate)
-        ? defaultTemplate
-        : existsSync(bundledTemplate)
-        ? bundledTemplate
-        : srcTemplate;
-      const targetDirectory = join(process.cwd(), 'docs');
-      const result = await runNonInteractiveBatch(batchInput, templatePath, targetDirectory);
-      exitCode = result.success ? 0 : 1;
-      return;
-    }
-
-    // No interactive fallback in non-interactive mode
-    console.error('Error: LEGILIMENS_NON_INTERACTIVE=true requires LEGILIMENS_BATCH_INPUT.');
-    exitCode = 1;
-    return;
-  }
-
+  
   if (!isTTY && !isNonInteractive) {
     console.error('Error: Legilimens requires an interactive terminal (TTY).');
     console.error('This usually happens when:');
@@ -96,6 +69,8 @@ export async function runClackApp(): Promise<void> {
     enableMouse: false               // Mouse not needed for Clack prompts
   });
 
+  let exitCode = 0;
+
   try {
     // Enter full-screen TUI mode (clears screen, preserves history)
     if (!disableTuiMode) {
@@ -113,7 +88,7 @@ export async function runClackApp(): Promise<void> {
       // Check if setup is needed (async)
       const setupRequired = await isSetupRequired();
 
-      if (!isNonInteractive && (setupRequired || process.env.LEGILIMENS_FORCE_SETUP === 'true')) {
+      if (setupRequired || process.env.LEGILIMENS_FORCE_SETUP === 'true') {
         // Show why setup is needed
         if (setupRequired) {
           const config = loadUserConfig();
@@ -134,6 +109,27 @@ export async function runClackApp(): Promise<void> {
           shouldContinue = false;
           continue;
         }
+      }
+
+      const config = loadUserConfig();
+
+      // Check for non-interactive batch mode
+      const batchInput = process.env.LEGILIMENS_BATCH_INPUT;
+      if (batchInput) {
+        // Non-interactive batch mode - skip TUI entirely
+        const defaultTemplate = join(process.cwd(), 'docs', 'templates', 'legilimens-template.md');
+        const bundledTemplate = join(__dirname, '..', 'assets', 'templates', 'legilimens-template.md');
+        const srcTemplate = join(__dirname, '..', '..', '..', 'src', 'assets', 'templates', 'legilimens-template.md');
+        const templatePath = existsSync(defaultTemplate)
+          ? defaultTemplate
+          : existsSync(bundledTemplate)
+          ? bundledTemplate
+          : srcTemplate;
+        const targetDirectory = join(process.cwd(), 'docs');
+        const result = await runNonInteractiveBatch(batchInput, templatePath, targetDirectory);
+        exitCode = result.success ? 0 : 1;
+        shouldContinue = false;
+        continue;
       }
 
       // Display ASCII banner with colors
@@ -162,7 +158,7 @@ export async function runClackApp(): Promise<void> {
       const action = await select({
         message: 'What would you like to do?',
         options: [
-          { value: 'generate', label: 'Generate dependency documentation' },
+          { value: 'generate', label: 'Generate gateway documentation' },
           { value: 'batch-generate', label: 'Generate from batch input' },
           { value: 'setup', label: 'Run setup wizard' },
           { value: 'quit', label: 'Quit' },

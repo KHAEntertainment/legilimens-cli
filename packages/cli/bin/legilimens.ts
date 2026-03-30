@@ -61,10 +61,9 @@ if (batchIndex !== -1) {
 }
 
 // Handle positional @file argument as batch input (shorthand)
-// Exclude scoped npm packages like @vercel/ai (they contain '/')
 if (batchIndex === -1) {
   const firstPositional = args.find(a => !a.startsWith('-'));
-  if (firstPositional?.startsWith('@') && !firstPositional.includes('/')) {
+  if (firstPositional?.startsWith('@')) {
     process.env.LEGILIMENS_BATCH_INPUT = firstPositional;
     process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
   }

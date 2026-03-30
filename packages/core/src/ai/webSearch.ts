@@ -116,29 +116,24 @@ export async function searchPreferredSources(identifierOrName: string): Promise<
   // 2. Official: Authoritative but may be incomplete or outdated
   // 3. DeepWiki: Good for GitHub repos
   // 4. Discussion: Community content, less authoritative than official sources
+  // Weight values are small floats (0.0-0.15) to act as a soft bias rather than overwhelming Tavily scores (0-1)
   const weight = (s?: SearchResultItem['sourceHint']) => {
     switch (s) {
-      case 'github': return 95;     // Highest priority - open-source projects
-      case 'official': return 90;   // Second priority - official documentation
-      case 'deepwiki': return 85;   // Third priority - DeepWiki indexes
-      case 'discussion': return 60; // Fourth priority - community/forum discussions
-      default: return 50;           // Lowest priority - other sources
+      case 'github': return 0.15;     // Highest priority - open-source projects
+      case 'official': return 0.10;   // Second priority - official documentation
+      case 'deepwiki': return 0.08;   // Third priority - DeepWiki indexes
+      case 'discussion': return 0.02; // Fourth priority - community/forum discussions
+      default: return 0.0;            // Lowest priority - other sources
     }
   };
 
-  // Filter to authoritative sources first (github/official)
-  const authoritativeCandidates = items.filter(i => i.sourceHint === 'github' || i.sourceHint === 'official');
-
-  // If we have authoritative sources, sort and return those
-  // Otherwise, fall back to all candidates
-  const candidates = authoritativeCandidates.length > 0 ? authoritativeCandidates : items;
-  const sortedItems = candidates.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
+  const sortedItems = items.sort((a, b) => (weight(b.sourceHint) + (b.score ?? 0)) - (weight(a.sourceHint) + (a.score ?? 0)));
 
   // Log ranking and sorting decisions
   if (process.env.LEGILIMENS_DEBUG) {
-    console.debug(`[webSearch] Ranking applied: GitHub(95) > Official(90) > DeepWiki(85) > Discussion(60) > Other(50)`);
+    console.debug(`[webSearch] Ranking applied: GitHub(+0.15) > Official(+0.10) > DeepWiki(+0.08) > Discussion(+0.02) > Other(+0.0)`);
     if (sortedItems.length > 0) {
-      const topSorted = sortedItems.slice(0, 3).map(i => 
+      const topSorted = sortedItems.slice(0, 3).map(i =>
         `${i.title} [${i.sourceHint}] (weighted: ${(weight(i.sourceHint) + (i.score ?? 0)).toFixed(2)})`
       ).join(', ');
       console.debug(`[webSearch] Top 3 sorted: ${topSorted}`);

@@ -172,28 +172,28 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
           throw error;
         }
       } else {
-        // User selected a specific package - derive detection directly from selection
+        // User selected a specific package - use it directly without re-running selection
         debugLogger.log('GenerationFlow', 'Using selected package directly', { packageName: String(selectedPackage) });
 
-        // Find the selected result to get its URL
-        const selectedResult = detection.context7Results?.find((r: { name: string }) => r.name === selectedPackage);
+        const s4 = spinner();
+        s4.start('Detecting source for selected package');
 
-        // Update detection values directly from user's selection (skip re-detection)
-        detection = {
-          sourceType: 'npm',
-          normalizedIdentifier: String(selectedPackage),
-          confidence: 'high',
-          aiAssisted: false,
-          dependencyType: 'library',
-          repositoryUrl: selectedResult?.url
-        };
+        try {
+          // Call with enableSelection: false to get deterministic result for the chosen package
+          detection = await detectSourceTypeWithAI(String(selectedPackage), { enableSelection: false });
+          debugLogger.log('GenerationFlow', 'Detection complete for selected package', { detection });
 
-        // Update dependent variables
-        sourceHint = '';
-        dependencyType = 'library';
-        repositoryUrl = selectedResult?.url;
+          // Update dependent variables
+          sourceHint = detection.aiAssisted ? ' (AI-assisted)' : '';
+          dependencyType = detection.dependencyType || 'other';
+          repositoryUrl = detection.repositoryUrl;
 
-        debugLogger.log('GenerationFlow', 'Detection derived from user selection', { detection });
+          s4.stop(`Source detected: ${detection.sourceType}, Type: ${dependencyType}${sourceHint}`);
+        } catch (error) {
+          debugLogger.error('GenerationFlow', error instanceof Error ? error : new Error(String(error)), { selectedPackage: String(selectedPackage) });
+          s4.stop('Detection failed');
+          throw error;
+        }
       }
     }
 
@@ -247,7 +247,7 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
           const trimmed = value.trim();
           const isUrl = trimmed.includes('://');
           const isGithubUrl = trimmed.includes('github.com/');
-          const isOwnerRepo = /^[^/\s]+\/[^/\s]+$/.test(trimmed);
+          const isOwnerRepo = /^[^\/\s]+\/[^\/\s]+$/.test(trimmed);
 
           if (!isUrl && !isGithubUrl && !isOwnerRepo) {
             return 'Please provide a valid URL (https://...), GitHub URL containing github.com/, or owner/repo identifier';
@@ -312,12 +312,6 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       }
 
       if (sourceAction === 'override') {
-        // Snapshot current detection state before override
-        const snapshotDetection = detection;
-        const snapshotDependencyType: string = dependencyType;
-        const snapshotRepositoryUrl: string | null | undefined = repositoryUrl;
-        const snapshotSourceHint: string | null = sourceHint;
-
         const overrideInput = await text({
           message: 'Enter correct URL or identifier:',
           placeholder: 'e.g., https://github.com/owner/repo or owner/repo',
@@ -355,18 +349,8 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
             });
 
             if (typeof context7Choice === 'symbol') {
-              // User cancelled - restore snapshot
-              detection = snapshotDetection;
-              dependencyType = snapshotDependencyType;
-              repositoryUrl = snapshotRepositoryUrl;
-              sourceHint = snapshotSourceHint;
-            } else if (context7Choice === '__none__') {
-              // User declined Context7 suggestions - restore snapshot
-              detection = snapshotDetection;
-              dependencyType = snapshotDependencyType;
-              repositoryUrl = snapshotRepositoryUrl;
-              sourceHint = snapshotSourceHint;
-            } else {
+              // Use whatever we have — loop back to summary
+            } else if (context7Choice !== '__none__') {
               // Re-detect with selected package
               const selSpinner = spinner();
               selSpinner.start('Confirming selection');
@@ -391,9 +375,22 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
       sourceConfirmed = true; // accept path
     }
 
-    // Step 3: Minimal mode — resolved from flag / env / config at startup
-    // (LEGILIMENS_MINIMAL_MODE is normalised by loadCliEnvironment)
-    const minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
+    // Step 3: Minimal mode - skip if already passed via --minimal flag
+    let minimalMode = process.env.LEGILIMENS_MINIMAL_MODE === 'true';
+    
+    if (!minimalMode) {
+      const response = await confirm({
+        message: 'Enable minimal mode (low-contrast, ANSI-free)?',
+        initialValue: false,
+      });
+
+      if (typeof response === 'symbol') {
+        outro('Cancelled');
+        return { success: false, error: 'Operation cancelled by user' };
+      }
+      
+      minimalMode = Boolean(response);
+    }
 
     // Step 4: Generate (multi-stage progress)
     const s1 = spinner();
@@ -430,12 +427,12 @@ export async function runClackGenerationFlow(templatePath: string, targetDirecto
     s2.stop('Documentation fetched');
 
     const s3 = spinner();
-    s3.start('Writing documentation files');
-    s3.stop('Documentation files written');
+    s3.start('Writing gateway files');
+    s3.stop('Gateway files written');
 
     // Step 5: Summary
     const summaryLines = [
-      `Quick reference: ${result.metadata.gatewayRelativePath}`,
+      `Gateway doc: ${result.metadata.gatewayRelativePath}`,
       `Static backup: ${result.metadata.staticBackupRelativePath}`,
       result.metadata.deepWikiRepository ? `DeepWiki: ${result.metadata.deepWikiRepository}` : '',
       `Duration: ${result.metadata.generationDurationMs}ms`,

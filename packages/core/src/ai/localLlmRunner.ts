@@ -1,8 +1,11 @@
-import { spawn } from 'child_process';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import type { z } from 'zod';
 import { getRuntimeConfig, isDmrMode, isLlamaCppMode } from '../config/runtimeConfig.js';
 import { extractFirstJson, safeParseJson } from './json.js';
 import { validateWithSchema, getSchemaPromptHint } from './schemas.js';
+
+const execFileAsync = promisify(execFile);
 
 export interface LlmRunOptions<T = unknown> {
   prompt: string;
@@ -57,9 +60,10 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
     wrappedPrompt = `You MUST respond with ONLY valid JSON. No explanations, no prose, no markdown - just pure JSON.\n\n${options.prompt}`;
   }
 
-  // Build llama.cpp arguments (prompt passed via stdin, not command line)
+  // Build llama.cpp arguments
   const args = [
     '-m', modelPath,
+    '-p', wrappedPrompt,
     '-n', String(maxTokens),
     '--temp', String(temperature),
     '-t', String(threads),
@@ -69,67 +73,16 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
 
   if (process.env.LEGILIMENS_DEBUG) {
     console.debug('[localLlm] llama.cpp args:', args);
-    console.debug('[localLlm] Prompt delivery: stdin (not command line)');
   }
 
   try {
-    // Use spawn to have control over stdin for passing the prompt
-    const content = await new Promise<string>((resolve, reject) => {
-      const child = spawn(binaryPath, args, {
-        env: { ...process.env }
-      });
-
-      let stdout = '';
-      let stderr = '';
-      let killed = false;
-
-      // Set timeout
-      const timer = setTimeout(() => {
-        killed = true;
-        child.kill();
-        reject(new Error('ETIMEDOUT'));
-      }, timeoutMs);
-
-      // Collect stdout
-      child.stdout.on('data', (data) => {
-        stdout += data.toString();
-        // Check buffer size
-        if (stdout.length + stderr.length > 10 * 1024 * 1024) {
-          killed = true;
-          child.kill();
-          reject(new Error('maxBuffer exceeded'));
-        }
-      });
-
-      // Collect stderr
-      child.stderr.on('data', (data) => {
-        stderr += data.toString();
-        // Check buffer size
-        if (stdout.length + stderr.length > 10 * 1024 * 1024) {
-          killed = true;
-          child.kill();
-          reject(new Error('maxBuffer exceeded'));
-        }
-      });
-
-      // Handle process exit
-      child.on('close', () => {
-        clearTimeout(timer);
-        if (!killed) {
-          resolve((stdout + stderr).trim());
-        }
-      });
-
-      // Handle errors
-      child.on('error', (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-
-      // Write prompt to stdin and close it
-      child.stdin.write(wrappedPrompt);
-      child.stdin.end();
+    const result = await execFileAsync(binaryPath, args, {
+      timeout: timeoutMs,
+      maxBuffer: 10 * 1024 * 1024, // 10MB max output
+      env: { ...process.env }
     });
+
+    const content = (result.stdout + result.stderr).trim();
 
     if (process.env.LEGILIMENS_DEBUG) {
       console.debug('[localLlm] llama.cpp raw output:', content.slice(0, 500));
@@ -182,7 +135,7 @@ async function runLlamaCppBinary<T = unknown>(options: LlmRunOptions<T>): Promis
     const duration = Date.now() - start;
 
     if (error instanceof Error) {
-      // Binary not found
+      // Binary not found (check this first)
       if (error.message.includes('ENOENT')) {
         return {
           success: false,

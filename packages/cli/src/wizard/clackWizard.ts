@@ -1,8 +1,10 @@
 import { intro, outro, text, confirm, select, spinner, note, cancel } from '@clack/prompts';
 import { saveUserConfig, loadUserConfig, type UserConfig } from '../config/userConfig.js';
-import { ensureDmrInstalled, getDmrPaths } from '../utils/dmrInstaller.js';
-import { detectExistingInstallation, ensureLlamaCppInstalled } from '../utils/llamaInstaller.js';
-import { getAllApiKeys, getStorageMethod } from '../config/secrets.js';
+import { ensureDmrInstalled, getDmrPaths, detectExistingInstallation as detectDmrInstallation } from '../utils/dmrInstaller.js';
+import { detectExistingInstallation, ensureLlamaCppInstalled, getLlamaPaths } from '../utils/llamaInstaller.js';
+import { getApiKey, getAllApiKeys, getStorageMethod } from '../config/secrets.js';
+import { existsSync } from 'fs';
+import { homedir } from 'os';
 
 /**
  * Mask an API key for display - shows only first 4 and last 4 characters
@@ -21,17 +23,17 @@ export interface WizardResult {
 }
 
 /**
- * Detect which local LLM backend is available (read-only probe)
+ * Detect which local LLM backend is available
  */
 async function detectLocalLlmBackend(): Promise<{ type: 'llama.cpp' | 'dmr' | 'both' | 'none'; llamaPath?: string; dmrAvailable?: boolean }> {
   // Check for llama.cpp first (user preference)
   const llamaInstall = await detectExistingInstallation();
 
-  // Check for DMR (read-only probe, don't install)
-  const dmrPaths = getDmrPaths();
-  const hasDmr = dmrPaths.binaryPath === 'docker' && dmrPaths.modelPath;
+  // Check for DMR (detection only, no model pull)
+  const dmrInstall = await detectDmrInstallation();
 
   const hasLlama = llamaInstall.found && llamaInstall.binaryPath && llamaInstall.binaryPath !== 'docker' && llamaInstall.modelPath;
+  const hasDmr = dmrInstall.found && dmrInstall.binaryPath === 'docker';
 
   if (hasLlama && hasDmr) {
     return { type: 'both', llamaPath: llamaInstall.binaryPath };
@@ -298,6 +300,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       };
     } else {
       // Configure DMR mode (HTTP API)
+      const dmrPaths = getDmrPaths();
       let modelName = 'granite-4.0-micro:latest';
       let apiEndpoint = 'http://localhost:12434';
 
@@ -460,7 +463,7 @@ export async function runClackWizard(): Promise<WizardResult> {
       );
     }
 
-    outro('Setup complete. You can now generate dependency docs.');
+    outro('Setup complete. You can now generate gateway docs.');
     return { success: true };
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);

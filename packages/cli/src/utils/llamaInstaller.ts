@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, chmodSync, createWriteStream, unlinkSync, readdi
 import { pipeline } from 'stream/promises';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
-import axios from 'axios';
+import axios, { type AxiosProgressEvent } from 'axios';
 import decompress from 'decompress';
 
 export interface InstallResult {
@@ -311,7 +311,7 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
     try {
       const response = await axios.get(GRANITE_MODEL_URL, {
         responseType: 'stream',
-        onDownloadProgress: (progressEvent: { loaded: number; total?: number }) => {
+        onDownloadProgress: (progressEvent: { total?: number; loaded: number }) => {
           const total = progressEvent.total ?? 0;
           const current = progressEvent.loaded;
           const pct = total > 0 ? Math.round((current / total) * 100) : 0;
@@ -447,7 +447,7 @@ export async function ensureLlamaCppInstalled(onProgress?: (msg: string) => void
     try {
       const response = await axios.get(GRANITE_MODEL_URL, {
         responseType: 'stream',
-        onDownloadProgress: (progressEvent: { loaded: number; total?: number }) => {
+        onDownloadProgress: (progressEvent: AxiosProgressEvent) => {
           const total = progressEvent.total ?? 0;
           const current = progressEvent.loaded;
           const pct = total > 0 ? Math.round((current / total) * 100) : 0;
