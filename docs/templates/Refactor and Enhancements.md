@@ -3,19 +3,19 @@ Refactor and Enhancement Notes - 10/27/2025
 ### UX Changes:
 1) Debug Mode should be a flag --debug not an ENV
 
-2) This should also be a flag --minimal not an ENV, it's disru[ptive and confusing as part of the retrieval flow.
+2) This should also be a flag --minimal not an ENV, it's disruptive and confusing as part of the retrieval flow.
 ◆  Enable minimal mode (low-contrast, ANSI-free)?
 │  ○ Yes / ● No
 
-3) Most all ENV set options should be migrated to flags. It's uncommon for CLI based tools to rely so heavily on ENV's. With that said, since these utilities have the potential to run inside a larger typescript project as an API of sorts, we could leave the ENV reception as a backup for such utility. 
+3) Most all ENV set options should be migrated to flags. It's uncommon for CLI based tools to rely so heavily on ENV's. With that said, since these utilities have the potential to run inside a larger typescript project as an API of sorts, we could leave the ENV reception as a backup for such utility but they should not be required, they should be alternatives to the flags.
 4) The term "Gateway" is confusing. "Generate Gateway" especially. The early project name was "Document Gateway CLI" which is where that terminology camewith but the focus needs to be on the documentation itself not on the name of the CLI tool.
  - For clarity, it would be beneficial to use more descriptive and standard terminology and documentation going forward. For example, instead of "generate gateway," use "generate dependency documentation" or "fetch library docs." This will prevent confusion and make it easier for new developers and end users to understand the purpose of these functions and the codebase at large. 
- 5) Progress Tracking - Implement progress status indicators while documents are being retrieved, processed, etc, so that the user isn't just sitting looking at an unresponsive terminal. A progress bar with occasional text updates would be good. 
+ 5) Progress Tracking - Implement progress status indicators while documents are being retrieved, processed, etc, so that the user isn't just sitting looking at an unresponsive terminal. A progress bar with occasional text updates would be good. Single line status tracking not the type where the TUI incrementally loads line after line reporting back small changes and filling up the whole terminal screen, that's ugly to look at and on longer runs could make users think there's an error.
  6) Batch Handling - Are we already setup for batch processing? If so, we need to better document how the end user triggerd a batch job, including options for it in the TUI. If it's not yet enabled, we need to implement batch handling, where I can just list a handful of dependencies at once, even of different types, and the system responds accordingly. 
  7) Opportunity to correct an inaccurate match. For instance, I searched for Mem0, an agentic memory system. Instead of identifying the core project repo, it found a 3rd party MCP for it. 
 
  '''
- [pipeline] Discovering repository for: "Mem0"
+[pipeline] Discovering repository for: "Mem0"
 ◑  Detecting dependency source and type with AI...[pipeline] Tavily found 5 results
 [pipeline] Tavily suggested: pinkpixel-dev/mem0-mcp.
 [pipeline] Tavily answer: The official GitHub repository for Mem0 is available at https://github.com/pinkpixel-dev/mem0-mcp. M...
@@ -28,18 +28,25 @@ Let's plan an overview option before retrieval begins in case we need to correct
 
 8) Obfuscation: When running the setup wizaerd your API keys are displayed in full in plaintext. They shiould be obfuscated for security reasons. We already store them secuely in the system keychain so we shouldn't circumvent that sagfety feature by displaying them in plaintext when retrieved from storage. 
 
+9) Re-Validate the Retrieval Pipeline: 
+  - User enters a name of required documentation
+  - Tavily finds the best match for the document on Context7, Github or a 3rd party website
+  - Context7 is queried first if matched, then ref for github and finally firecrawl ONLY for documents not found on the other two sources. 
+  - FULL Markdown Document(s) are stored to the static-backup folder, they DO NOT pass through the LLM's context window while being downloaded. 
+  - ONCE downloaded, THEN the Local LLM (via DMR) processes the data and builds the companion documents, makes tool recomendations, etc. 
+  - IF the document is too large for the LLM to process, it then retrieves a summary version of the documentation from Context7 (limiting the tokens) capped at say 10,000 tokens and uses that information to build the companion documents, this way it doesn't overflow it's context window. 
+
+
 ### Core Changes:
 
-1) We need to be able to unisntall the chosen LLM via the CLI. 
-2) We already put up some guardrails to prevent duplicate installs, so let's just review those and make sure they are working as expected.
-3) We are going to offer a choice of LLM's to choose from, with simple descriptions for each one. 
+1) We need to be able to uninstall the chosen LLM via the CLI.
+2) We need a dashboard/status panel on the main TUI welcome screen,  under the Ascii art, with things like DMR Status, Local Model Status, Tavily, Firecrawl, Ref and Context7 status, etc. If anything is missing a reminder for the user to go into setup to complete it. If everything is detected, a status message saying "all dependencies detected: ready to generate documents" or something like that.
+3) We already put up some guardrails to prevent duplicate installs, so let's just review those and make sure they are working as expected.
+4) We are going to offer a choice of LLMs to choose from, with simple descriptions for each one.
 - IBM Granite 4 Micro - Current Default. Compact Install Size, 131k Context Window, Great Reasoning and Tool Use Abilities. | https://huggingface.co/ibm-granite/granite-4.0-micro
 - Phi-4 - The original default. Larger Install Size, Possible Better Reasoning and Tool Use Abilities but Small Context Window. | https://huggingface.co/QuantFactory/phi-4-GGUF
-- Qwen 2.5 1b - Most Compact Install Size. Recomended for older hardware or space concious installs. Good reasoning and tool use abilities. | https://huggingface.co/Qwen/Qwen2.5-1B-Instruct
+- Qwen 2.5 1.5B - Most Compact Install Size. Recommended for older hardware or space-conscious installs. Good reasoning and tool use abilities. | https://huggingface.co/Qwen/Qwen2.5-1B-Instruct
 4) Consider adding Docker Model Runner as an alternative way to run models locally instead of llama.cpp. Many users already have docker desktop installed and ready so this could be a convenient alternative. Details in 'docs/templates/DMR.md'
-
-## Future Proofing & QOL Improvements
-1) Settings and Customizations lke the System Prompt for the mebedded agent are currently hardcoded. These should be setup in a way that allows them to be tweaked/updated while also retaining update agnosticism. To acheive this, I am thinking we use a settings.json file that will live in the instalation directory on a production installation. Something like ~/.config/legilimens/settings.json. This file is generated by our installer and not part of the original install package. This means, when the user runs an update, the settings.json file does not get overridden and set back to defaults. We can use this settings.json file for ANY non-sensitive configuration options and user preferences.
 
 ## 📊 Comparison Chart
 
@@ -48,8 +55,17 @@ Let's plan an overview option before retrieval begins in case we need to correct
 | **Qwen2.5-1.5B** | ~1-1.5GB | ~40-45% | 32K | Ultra-light, fast |
 | **Granite-4.0-Micro** | ~2-3GB | **59.98%** | **128K** | **Balanced quality + speed** |
 | **Phi-4** | ~6-8GB | Unknown | 16K | Maximum quality |
-4) Future Planning - We will offer the ability to use Openrouter instead of LLama.cpp for those who don't want to run locally or can't due to hardware limitations.
-5) 
+
+### Debug Issues
+1) The handoff of the tasks from the local LLM to installed CLI utilities like Claude-Code, Gemini CLI or Codex never seem to work. We need to re-evaluate how this handoff is happening and verify that the system is using valid non-interactive commands to control these utilities. Here are all the PROPER commands and arguments for Codex, Gemini and Claude-Code (The Gemini Commands should piggyback over to Qwen as well, just change the command from gemini to qwen) - see [CLI Utility Headless - Non-Interactive.md](./## CLI Utility Headless - Non-Interactive.md) 
+
+
+## Future Proofing & QOL Improvements
+1) Settings and Customizations like the System Prompt for the emebedded agent are currently hardcoded. These should be setup in a way that allows them to be tweaked/updated while also retaining update agnosticism. To acheive this, I am thinking we use a settings.json file that will live in the instalation directory on a production installation. Something like ~/.config/legilimens/settings.json. This file is generated by our installer and not part of the original install package. This means, when the user runs an update, the settings.json file does not get overridden and set back to defaults. We can use this settings.json file for ANY non-sensitive configuration options and user preferences that should persist between updates.
+
+
+2) Future Planning - We will offer the ability to use Openrouter instead of LLama.cpp for those who don't want to run locally or can't due to hardware limitations.
+3) Consider switching our  internal LLM handling to a standard system like Vercel AI SDK. 
 
 
 ### Non-Interactive Mode
@@ -72,15 +88,18 @@ Similar examples could be appended to AGENTS.md, Gemini.md, .cursorrules, warp.m
 - https://docs.claude.com/en/docs/agents-and-tools/agent-skills/overview.md
 
 3) Major Function Addition: local enhanced graphRAG
+## Important! We are not implementing this yet, we will treat this as it's own major implementation phase. BUT I am providing the context now to be preparatory as we work on the above changes.
+
 I made a typescript based advanced graphRAG solution with Vercel AI SDK and llama.cpp support tailored to be incorporated into this project as well as operate standalone. We will work on this as it's own dedicated phase/plan but be aware that it will be the next step after these modifications. 
 To get more knowledge about this project: https://deepwiki.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk
-Actual Repo: https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk
-When we are ready to begin this phase, we will clone the graphRAG repo into our current Repo and .gitignore it, setting it up as a monorepo structure, to facilitate the implementation. Upon full implementation, we will remove the nested repo setup. 
+Actual Repo: https://github.com/KHAEntertainment/graphrag-with-sqlite_vec-ts-vercel-ai-sdk and a symlinked copy of the local repo now exists in this project in .resources/graphrag-system 
 
 - WHEN we implement this major feature edition, we will augment some of the current output. For example, we will have no need to reference deepwiki as we'll be able to utilize our own graphRAG system via MCP to access the documentation, and like deepwiki, our own internal LLM will act as the attendant, providing surgically retrieved answers from the embedded repos. Deepwiki instead can be referenced as a fallback if the user decides not to use the built-in graphRAG system.
 - We will add additional CLI commands/options for the RAG system to the CLI
-- 
-cd "/Users/bbrenner/Documents/Scripting Projects/doc-gateway-cli"
-pnpm --filter @legilimens/cli start:dev
+- Models being used for embedding, retrieval, etc. 
+  - Semantic Embeddings, Edges, etc - Granite 4 Embeddings
+  - Vector Embeddings - https://huggingface.co/SciPhi/Triplex
+  - Specialized Retrieval (optional) - 
+  - MCP Attendant - Granite-4 Micro (same as legilimens)
 
 

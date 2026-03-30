@@ -36,6 +36,40 @@ if (args.includes('--version') || args.includes('-v')) {
   process.exit(0);
 }
 
+// Handle --minimal flag
+if (args.includes('--minimal')) {
+  process.env.LEGILIMENS_MINIMAL_MODE = 'true';
+}
+
+// Handle --debug flag
+if (args.includes('--debug')) {
+  process.env.LEGILIMENS_DEBUG = 'true';
+}
+
+// Handle --batch flag (positional argument: file path or inline identifiers)
+const batchIndex = args.indexOf('--batch');
+if (batchIndex !== -1) {
+  const batchInput = args[batchIndex + 1];
+  if (!batchInput || batchInput.startsWith('-')) {
+    console.error('Error: --batch requires an argument (file path or inline identifiers)');
+    console.error('Usage: legilimens --batch @./deps.txt');
+    console.error('       legilimens --batch "react, express, next"');
+    process.exit(1);
+  }
+  process.env.LEGILIMENS_BATCH_INPUT = batchInput;
+  process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
+}
+
+// Handle positional @file argument as batch input (shorthand)
+// Exclude scoped npm packages like @vercel/ai (they contain '/')
+if (batchIndex === -1) {
+  const firstPositional = args.find(a => !a.startsWith('-'));
+  if (firstPositional?.startsWith('@') && !firstPositional.includes('/')) {
+    process.env.LEGILIMENS_BATCH_INPUT = firstPositional;
+    process.env.LEGILIMENS_NON_INTERACTIVE = 'true';
+  }
+}
+
 // Handle --setup flag
 if (args.includes('--setup')) {
   process.env.LEGILIMENS_FORCE_SETUP = 'true';

@@ -1,8 +1,43 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { detectSourceType, deriveDeepWikiUrl, isGitHubIdentifier, detectSourceTypeWithAI } from '../src/detection/sourceDetector.js';
 import * as discoveryPipeline from '../src/ai/repositoryDiscoveryPipeline.js';
 
 describe('detectSourceType', () => {
+  beforeAll(() => {
+    // Mock AI-assisted pipeline so tests are deterministic and offline
+    vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockImplementation(async (input: string) => {
+      const normalized = input.toLowerCase();
+      if (normalized.includes('jumpcloud')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://docs.jumpcloud.com/api/2.0', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('stripe')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://stripe.com/docs/api', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('github api')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://docs.github.com/en/rest', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('next.js') || normalized.includes('nextjs')) {
+        return { sourceType: 'github', normalizedIdentifier: 'nextjs/next', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'react' || normalized.includes('react framework')) {
+        return { sourceType: 'npm', normalizedIdentifier: 'react', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'eslint') {
+        return { sourceType: 'npm', normalizedIdentifier: 'eslint', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'typescript') {
+        return { sourceType: 'github', normalizedIdentifier: 'microsoft/typescript', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'prettier') {
+        return { sourceType: 'github', normalizedIdentifier: 'prettier/prettier', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'strappi') {
+        return { sourceType: 'npm', normalizedIdentifier: 'strapi', confidence: 'medium', aiAssisted: true } as any;
+      }
+      return { sourceType: 'unknown', normalizedIdentifier: input, confidence: 'low', aiAssisted: true } as any;
+    });
+  });
+
   describe('GitHub detection', () => {
     describe('standard formats', () => {
       it('detects github.com/owner/repo as GitHub source', () => {
@@ -106,52 +141,52 @@ describe('detectSourceType', () => {
     });
   });
 
-  describe('NPM detection', () => {
+  describe('NPM-like inputs (now return unknown, trigger AI pipeline)', () => {
     describe('scoped packages', () => {
-      it('detects @scope/package as NPM source', () => {
+      it('returns unknown for @scope/package (triggers AI pipeline)', () => {
         const result = detectSourceType('@vercel/ai');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('@vercel/ai');
-        expect(result.confidence).toBe('high');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects @supabase/supabase-js as NPM source', () => {
+      it('returns unknown for @supabase/supabase-js (triggers AI pipeline)', () => {
         const result = detectSourceType('@supabase/supabase-js');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('@supabase/supabase-js');
-        expect(result.confidence).toBe('high');
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('simple packages', () => {
-      it('detects lodash as NPM source', () => {
+      it('returns unknown for lodash (triggers AI pipeline)', () => {
         const result = detectSourceType('lodash');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('lodash');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects react as NPM source', () => {
+      it('returns unknown for react (triggers AI pipeline)', () => {
         const result = detectSourceType('react');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('react');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
 
-      it('detects express as NPM source', () => {
+      it('returns unknown for express (triggers AI pipeline)', () => {
         const result = detectSourceType('express');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('express');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('with hyphens', () => {
-      it('detects hyphenated package names as NPM source', () => {
+      it('returns unknown for hyphenated package names (triggers AI pipeline)', () => {
         const result = detectSourceType('ink-text-input');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('ink-text-input');
-        expect(result.confidence).toBe('medium');
+        expect(result.confidence).toBe('low');
       });
     });
   });
@@ -207,10 +242,11 @@ describe('detectSourceType', () => {
     });
 
     describe('ambiguous patterns', () => {
-      it('detects single segment with hyphen as NPM', () => {
+      it('returns unknown for single segment with hyphen (was NPM, now triggers AI)', () => {
         const result = detectSourceType('react-native');
-        expect(result.sourceType).toBe('npm');
+        expect(result.sourceType).toBe('unknown');
         expect(result.normalizedIdentifier).toBe('react-native');
+        expect(result.confidence).toBe('low');
       });
 
       it('detects two segments with slash as GitHub', () => {
@@ -236,37 +272,6 @@ describe('detectSourceType', () => {
   });
 
   describe('Natural language processing', () => {
-    beforeAll(() => {
-      // Mock AI-assisted pipeline so tests are deterministic and offline
-      vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockImplementation(async (input: string) => {
-        const normalized = input.toLowerCase();
-        if (normalized.includes('jumpcloud')) {
-          return { sourceType: 'url', normalizedIdentifier: 'https://docs.jumpcloud.com/api/2.0', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized.includes('stripe')) {
-          return { sourceType: 'url', normalizedIdentifier: 'https://stripe.com/docs/api', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized.includes('github api')) {
-          return { sourceType: 'url', normalizedIdentifier: 'https://docs.github.com/en/rest', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized.includes('next.js') || normalized.includes('nextjs')) {
-          return { sourceType: 'github', normalizedIdentifier: 'nextjs/next', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized === 'react' || normalized.includes('react framework')) {
-          return { sourceType: 'npm', normalizedIdentifier: 'react', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized === 'eslint') {
-          return { sourceType: 'npm', normalizedIdentifier: 'eslint', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized === 'typescript') {
-          return { sourceType: 'github', normalizedIdentifier: 'microsoft/typescript', confidence: 'medium', aiAssisted: true } as any;
-        }
-        if (normalized === 'prettier') {
-          return { sourceType: 'github', normalizedIdentifier: 'prettier/prettier', confidence: 'medium', aiAssisted: true } as any;
-        }
-        return { sourceType: 'unknown', normalizedIdentifier: input, confidence: 'low', aiAssisted: true } as any;
-      });
-    });
     describe('API mappings', () => {
       it('maps "Jumpcloud API 2.0" to Jumpcloud API URL', async () => {
         const result = await detectSourceTypeWithAI('Jumpcloud API 2.0');
@@ -291,11 +296,13 @@ describe('detectSourceType', () => {
     });
 
     describe('Framework mappings', () => {
-      it('maps "React" to react package', () => {
+      it('returns unknown for "React" (capitalized, calls AI pipeline via detectSourceTypeWithAI)', () => {
+        // Capitalized "React" does not match mapNaturalLanguageToIdentifier (lowercase only)
+        // detectSourceTypeWithAI will call AI pipeline for this unknown input
         const result = detectSourceType('React');
-        expect(result.sourceType).toBe('npm');
-        expect(result.normalizedIdentifier).toBe('react');
-        expect(result.confidence).toBe('medium');
+        expect(result.sourceType).toBe('unknown');
+        expect(result.normalizedIdentifier).toBe('React'); // NOT mapped because capitalized
+        expect(result.confidence).toBe('low');
       });
 
       it('maps "Next.js" to nextjs/next GitHub repo', async () => {
@@ -305,16 +312,16 @@ describe('detectSourceType', () => {
         expect(result.confidence).toBe('medium');
       });
 
-      it('maps "Vue" to vue package', () => {
+      it('returns unknown for "Vue" (capitalized, calls AI pipeline via detectSourceTypeWithAI)', () => {
         const result = detectSourceType('Vue');
-        expect(result.sourceType).toBe('npm');
-        expect(result.normalizedIdentifier).toBe('vue');
-        expect(result.confidence).toBe('medium');
+        expect(result.sourceType).toBe('unknown');
+        expect(result.normalizedIdentifier).toBe('Vue'); // NOT mapped because capitalized
+        expect(result.confidence).toBe('low');
       });
     });
 
     describe('Tool mappings', () => {
-      it('maps "ESLint" to eslint package', async () => {
+      it('maps "ESLint" to eslint package via AI', async () => {
         const result = await detectSourceTypeWithAI('ESLint');
         expect(result.sourceType).toBe('npm');
         expect(result.normalizedIdentifier).toBe('eslint');
@@ -363,6 +370,116 @@ describe('detectSourceType', () => {
   });
 });
 
+describe('detectSourceTypeWithAI', () => {
+  beforeAll(() => {
+    // Mock AI-assisted pipeline so tests are deterministic and offline
+    vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockImplementation(async (input: string) => {
+      const normalized = input.toLowerCase();
+      if (normalized.includes('jumpcloud')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://docs.jumpcloud.com/api/2.0', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('stripe')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://stripe.com/docs/api', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('github api')) {
+        return { sourceType: 'url', normalizedIdentifier: 'https://docs.github.com/en/rest', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized.includes('next.js') || normalized.includes('nextjs')) {
+        return { sourceType: 'github', normalizedIdentifier: 'nextjs/next', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'react' || normalized.includes('react framework')) {
+        return { sourceType: 'npm', normalizedIdentifier: 'react', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'eslint') {
+        return { sourceType: 'npm', normalizedIdentifier: 'eslint', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'typescript') {
+        return { sourceType: 'github', normalizedIdentifier: 'microsoft/typescript', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'prettier') {
+        return { sourceType: 'github', normalizedIdentifier: 'prettier/prettier', confidence: 'medium', aiAssisted: true } as any;
+      }
+      if (normalized === 'strappi') {
+        return { sourceType: 'npm', normalizedIdentifier: 'strapi', confidence: 'medium', aiAssisted: true } as any;
+      }
+      return { sourceType: 'unknown', normalizedIdentifier: input, confidence: 'low', aiAssisted: true } as any;
+    });
+  });
+
+  describe('high-confidence pattern matches skip AI', () => {
+    it('returns GitHub without AI for high-confidence GitHub matches', async () => {
+      const result = await detectSourceTypeWithAI('vercel/ai');
+      expect(result.sourceType).toBe('github');
+      expect(result.confidence).toBe('high');
+      expect(result.aiAssisted).toBe(false);
+    });
+
+    it('returns URL without AI for high-confidence URL matches', async () => {
+      const result = await detectSourceTypeWithAI('https://docs.stripe.com');
+      expect(result.sourceType).toBe('url');
+      expect(result.confidence).toBe('high');
+      expect(result.aiAssisted).toBe(false);
+    });
+  });
+
+  describe('unknown inputs call AI pipeline', () => {
+    it('calls AI pipeline for unknown lowercase inputs', async () => {
+      const result = await detectSourceTypeWithAI('strappi');
+      expect(result.aiAssisted).toBe(true);
+      expect(result.sourceType).toBe('npm');
+      expect(result.normalizedIdentifier).toBe('strapi');
+    });
+
+    it('calls AI pipeline for unknown inputs without spaces', async () => {
+      const result = await detectSourceTypeWithAI('lodash');
+      expect(result.aiAssisted).toBe(true);
+    });
+
+    it('calls AI pipeline for scoped packages', async () => {
+      const result = await detectSourceTypeWithAI('@vercel/ai');
+      expect(result.aiAssisted).toBe(true);
+    });
+  });
+
+  describe('medium confidence calls AI pipeline', () => {
+    it('calls AI pipeline for mapped identifiers with medium confidence', async () => {
+      // Mapped identifiers like "react" get medium confidence from mapNaturalLanguageToIdentifier
+      // but should still call AI for better accuracy
+      const result = await detectSourceTypeWithAI('react');
+      expect(result.aiAssisted).toBe(true);
+      expect(result.sourceType).toBe('npm');
+      expect(result.normalizedIdentifier).toBe('react');
+    });
+  });
+
+  describe('natural language inputs call AI pipeline', () => {
+    it('calls AI pipeline for capitalized inputs', async () => {
+      const result = await detectSourceTypeWithAI('OpenAI Codex');
+      expect(result.aiAssisted).toBe(true);
+    });
+
+    it('calls AI pipeline for inputs with spaces', async () => {
+      const result = await detectSourceTypeWithAI('React framework');
+      expect(result.aiAssisted).toBe(true);
+      expect(result.sourceType).toBe('npm');
+    });
+  });
+
+  describe('fallback behavior', () => {
+    it('falls back to pattern detection if AI pipeline fails', async () => {
+      // Temporarily override mock to throw error
+      const mockSpy = vi.spyOn(discoveryPipeline, 'discoverWithPipeline').mockRejectedValueOnce(new Error('AI pipeline failed'));
+
+      const result = await detectSourceTypeWithAI('unknown-package');
+      expect(result.aiAssisted).toBe(false);
+      expect(result.sourceType).toBe('unknown');
+
+      // Reset only this specific spy to restore the beforeAll mock
+      mockSpy.mockRestore();
+    });
+  });
+});
+
 describe('deriveDeepWikiUrl', () => {
   describe('successful derivation (GitHub sources)', () => {
     describe('standard GitHub formats', () => {
@@ -398,7 +515,7 @@ describe('deriveDeepWikiUrl', () => {
   });
 
   describe('null returns (non-GitHub sources)', () => {
-    describe('NPM packages', () => {
+    describe('NPM-like inputs (now return null, was detected as NPM)', () => {
       it('returns null for scoped NPM packages', () => {
         const url = deriveDeepWikiUrl('@vercel/ai');
         expect(url).toBeNull();
@@ -451,11 +568,11 @@ describe('isGitHubIdentifier', () => {
   });
 
   describe('returns false for non-GitHub', () => {
-    it('returns false for scoped NPM packages', () => {
+    it('returns false for scoped NPM packages (now returns unknown)', () => {
       expect(isGitHubIdentifier('@vercel/ai')).toBe(false);
     });
 
-    it('returns false for simple NPM packages', () => {
+    it('returns false for simple NPM packages (now returns unknown)', () => {
       expect(isGitHubIdentifier('lodash')).toBe(false);
     });
 

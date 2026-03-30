@@ -1,4 +1,5 @@
 import type { DetectionResult } from '../detection/sourceDetector.js';
+import { getRuntimeConfig, isLocalLlmEnabled } from '../config/runtimeConfig.js';
 import { runLocalJson } from './localLlmRunner.js';
 import { searchPreferredSources } from './webSearch.js';
 import { extractFirstJson, safeParseJson, validateDiscoveryJson, validateToolCallJson } from './json.js';
@@ -28,7 +29,7 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
   }
 
   // Step 1: Search with Tavily (uses domain filtering + developer-focused query)
-  const searchResult = await searchPreferredSources('', natural);  // buildQuery removed, now handled in webSearch
+  const searchResult = await searchPreferredSources(natural);  // buildQuery removed, now handled in webSearch
   const { items, tavilyAnswer, suggestedIdentifier, sourceRecommendation } = searchResult;
 
   if (process.env.LEGILIMENS_DEBUG) {
@@ -55,11 +56,24 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
     // Extract identifier from URL if possible
     let identifier = natural;
     if (sourceRecommendation.sourceType === 'github') {
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[pipeline] Extracting GitHub identifier from URL: ${sourceRecommendation.primaryUrl}`);
+      }
       const match = sourceRecommendation.primaryUrl.match(/github\.com\/([^\/]+\/[^\/?\#]+)/);
       if (match) {
         identifier = match[1].replace(/\.git$/, '').replace(/\/$/, '');
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[pipeline] Extracted GitHub identifier: ${identifier}`);
+        }
+      } else {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[pipeline] Could not extract GitHub identifier from URL, using natural input: ${natural}`);
+        }
       }
     } else if (sourceRecommendation.sourceType === 'context7') {
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[pipeline] Extracting Context7 identifier from URL: ${sourceRecommendation.primaryUrl}`);
+      }
       // Parse normalized identifier from Context7 URL
       // Expected format: https://context7.com/package-name or https://context7.com/@scope/package-name
       const context7Match = sourceRecommendation.primaryUrl.match(/context7\.com\/(.+?)(?:[?#]|$)/);
@@ -67,6 +81,10 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
         identifier = context7Match[1].replace(/\/$/, '');
         if (process.env.LEGILIMENS_DEBUG) {
           console.debug(`[pipeline] Extracted Context7 identifier from URL: ${identifier}`);
+        }
+      } else {
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[pipeline] Could not extract Context7 identifier from URL, using natural input: ${natural}`);
         }
       }
     }
@@ -131,39 +149,60 @@ export async function discoverWithPipeline(natural: string): Promise<PipelineRes
       console.debug(`[pipeline] Ambiguous results, consulting LLM`);
     }
     
-    const llmPrompt = [
-      'Given these candidate sources, choose the canonical identifier, primary URL, source type, confidence, and dependency type.',
-      sourceRecommendation ? `Tavily's LLM recommends: ${sourceRecommendation.sourceType} (${sourceRecommendation.confidence} confidence) at ${sourceRecommendation.primaryUrl || 'unknown URL'}` : '',
-      'Respond with a single JSON object with fields:',
-      '{ "canonicalIdentifier": string|null, "repositoryUrl": string|null, "sourceType": "github|npm|url|unknown", "confidence": "high|medium|low", "dependencyType": "framework|api|library|tool|other", "searchSummary": string }',
-      `Natural: ${natural}`,
-      `Candidates: ${JSON.stringify(items, null, 2)}`,
-    ].filter(Boolean).join('\n');  // Filter out empty strings
+    const rc = getRuntimeConfig();
+    const llmEnabled = isLocalLlmEnabled(rc);
 
-    const decision = await runLocalJson<any>({ prompt: llmPrompt, schema: discoverySchema });
-    
-    if (decision.success && decision.json && validateDiscoveryJson(decision.json)) {
-      const choice = decision.json;
-      const normalizedIdentifier = String(choice.canonicalIdentifier ?? natural);
+    if (llmEnabled) {
+      const llmPrompt = [
+        'Given these candidate sources, choose the canonical identifier, primary URL, source type, confidence, and dependency type.',
+        sourceRecommendation ? `Tavily's LLM recommends: ${sourceRecommendation.sourceType} (${sourceRecommendation.confidence} confidence) at ${sourceRecommendation.primaryUrl || 'unknown URL'}` : '',
+        'Respond with a single JSON object with fields:',
+        '{ "canonicalIdentifier": string|null, "repositoryUrl": string|null, "sourceType": "github|npm|url|unknown", "confidence": "high|medium|low", "dependencyType": "framework|api|library|tool|other", "searchSummary": string }',
+        `Natural: ${natural}`,
+        `Candidates: ${JSON.stringify(items, null, 2)}`,
+      ].filter(Boolean).join('\n');  // Filter out empty strings
 
       if (process.env.LEGILIMENS_DEBUG) {
-        console.debug(`[pipeline] LLM decision: ${normalizedIdentifier} (${choice.sourceType}, ${choice.confidence})`);
+        console.debug(`[pipeline] Consulting LLM with ${items.length} candidates, prompt length: ${llmPrompt.length} chars`);
       }
 
-      return {
-        sourceType: choice.sourceType,
-        normalizedIdentifier,
-        repositoryUrl: choice.repositoryUrl ?? undefined,
-        aiAssisted: true,
-        confidence: choice.confidence,
-        searchSummary: choice.searchSummary,
-        dependencyType: choice.dependencyType ?? 'other',
-      };
+      const decision = await runLocalJson({ prompt: llmPrompt, schema: discoverySchema });
+      
+      if (process.env.LEGILIMENS_DEBUG) {
+        console.debug(`[pipeline] LLM response: ${decision.success ? 'success' : 'failed'}, attempts: ${decision.attempts}, duration: ${decision.durationMs}ms`);
+      }
+      
+      if (decision.success && decision.json && validateDiscoveryJson(decision.json)) {
+        const choice = decision.json;
+        const normalizedIdentifier = String(choice.canonicalIdentifier ?? natural);
+
+        if (process.env.LEGILIMENS_DEBUG) {
+          console.debug(`[pipeline] LLM decision: ${normalizedIdentifier} (${choice.sourceType}, ${choice.confidence})`);
+        }
+
+        return {
+          sourceType: choice.sourceType,
+          normalizedIdentifier,
+          repositoryUrl: choice.repositoryUrl ?? undefined,
+          aiAssisted: true,
+          confidence: choice.confidence,
+          searchSummary: choice.searchSummary,
+          dependencyType: choice.dependencyType ?? 'other',
+        };
+      } else {
+        if (process.env.LEGILIMENS_DEBUG) {
+          if (!decision.success) {
+            console.debug(`[pipeline] LLM failed: ${decision.error || 'unknown error'}`);
+          } else {
+            console.debug(`[pipeline] LLM response validation failed: ${decision.json ? 'invalid schema' : 'no JSON returned'}`);
+          }
+        }
+      }
     }
 
-    // Step 5: LLM failed - fallback to Tavily's recommendation or top result
+    // Step 5: LLM failed or disabled - fallback to Tavily's recommendation or top result
     if (process.env.LEGILIMENS_DEBUG) {
-      console.debug(`[pipeline] LLM failed, falling back to ${sourceRecommendation ? 'Tavily recommendation' : 'top result'}`);
+      console.debug(`[pipeline] LLM failed or disabled, falling back to ${sourceRecommendation ? 'Tavily recommendation' : 'top result'}`);
     }
     
     // Prefer Tavily's recommendation if available and confidence is not low

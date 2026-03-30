@@ -1,10 +1,14 @@
 # Working CLI Setup - Status & Configuration
 
-## 🎉 Current Status: FULLY FUNCTIONAL
+> **ARCHIVE NOTICE** — This document is a historical snapshot from early development.
+> It contains machine-specific paths and outdated status. For current setup instructions,
+> see the main `README.md`. This file is retained for reference only.
 
-As of commit `99932db`, the Legilimens CLI is working correctly with all major issues resolved.
+## Current Status (snapshot at time of writing)
 
-## ✅ Issues Resolved
+The Legilimens CLI foundation was confirmed functional at this snapshot.
+
+## Issues Resolved (historical)
 
 ### 1. Setup Wizard No Longer Forces Re-runs
 - **Problem**: Wizard ran after every refactor, forcing re-downloads
@@ -37,8 +41,8 @@ As of commit `99932db`, the Legilimens CLI is working correctly with all major i
   "apiKeysStoredInKeychain": false,
   "localLlm": {
     "enabled": true,
-    "binaryPath": "/Users/bbrenner/.legilimens/bin/build/bin/llama-cli",
-    "modelPath": "/Users/bbrenner/.legilimens/models/phi-4-q4.gguf"
+    "binaryPath": "<USER_HOME>/.legilimens/bin/build/bin/llama-cli",
+    "modelPath": "<USER_HOME>/.legilimens/models/phi-4-q4.gguf"
   },
   "_warning": "API keys are stored securely in system keychain or encrypted file. Do not commit this file to version control."
 }
@@ -62,8 +66,8 @@ export LEGILIMENS_FETCH_RETRIES=3         # 3 retries
 ```
 
 ### Local LLM Installation
-- ✅ **Binary**: `/Users/bbrenner/.legilimens/bin/build/bin/llama-cli` (8.4MB, executable)
-- ✅ **Model**: `/Users/bbrenner/.legilimens/models/phi-4-q4.gguf` (8.4GB, complete)
+- ✅ **Binary**: `<USER_HOME>/.legilimens/bin/build/bin/llama-cli` (8.4MB, executable)
+- ✅ **Model**: `<USER_HOME>/.legilimens/models/phi-4-q4.gguf` (8.4GB, complete)
 - ✅ **Detection**: Recursive search finds installation correctly
 
 ## 🚀 CLI Flow Status
@@ -124,8 +128,8 @@ LEGILIMENS_LOCAL_LLM_ENABLED: undefined
 # After loadCliEnvironment()  
 TAVILY_API_KEY: SET ✅
 LEGILIMENS_LOCAL_LLM_ENABLED: true ✅
-LEGILIMENS_LOCAL_LLM_BIN: /Users/bbrenner/.legilimens/bin/build/bin/llama-cli ✅
-LEGILIMENS_LOCAL_LLM_MODEL: /Users/bbrenner/.legilimens/models/phi-4-q4.gguf ✅
+LEGILIMENS_LOCAL_LLM_BIN: <USER_HOME>/.legilimens/bin/build/bin/llama-cli ✅
+LEGILIMENS_LOCAL_LLM_MODEL: <USER_HOME>/.legilimens/models/phi-4-q4.gguf ✅
 ```
 
 ## 🔄 Next Steps for UX Flow

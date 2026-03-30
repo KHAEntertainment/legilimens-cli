@@ -23,6 +23,8 @@ export {
   getAiCliConfig,
   isAiGenerationEnabled,
   isLocalLlmEnabled,
+  isDmrMode,
+  isLlamaCppMode,
   getPreferredAiTool,
   MINIMUM_NODE_MAJOR
 } from './config/runtimeConfig.js';
@@ -49,7 +51,8 @@ export type { PerformanceMetrics } from './types.js';
 export type {
   SourceType,
   DetectionResult,
-  AsyncDetectionResult
+  AsyncDetectionResult,
+  DetectionOptions
 } from './detection/sourceDetector.js';
 export {
   detectSourceType,

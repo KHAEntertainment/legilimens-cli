@@ -1,7 +1,7 @@
 # Legilimens CLI
 
 The `@legilimens/cli` package delivers a modern, agentic command-line experience for Legilimens.
-It provides an interactive setup wizard and guided workflows for generating gateway documentation
+It provides an interactive setup wizard and guided workflows for generating dependency documentation
 with DeepWiki integration.
 
 ## Getting Started
